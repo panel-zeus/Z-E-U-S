@@ -990,6 +990,21 @@ const Router = {
 		if (url.pathname === "/api/test-proxy" && request.method === "POST") {
 			const { proxy, skip_country, username, replace_on_fail } = await readJsonBody(request);
 			if (!proxy) return new Response(JSON.stringify({ error: "پـروکـسـی وارد نشده است" }), { status: 400, headers: { "Content-Type": "application/json" } });
+			// --- بخش مربوط به تست پینگ مستقیم سرور ---
+			if (proxy === "direct") {
+				const startT = Date.now();
+				try {
+					const controller = new AbortController();
+					const tid = setTimeout(() => controller.abort(), 3000);
+					// ارسال یک درخواست بسیار سبک به سرورهای کلودفلر برای سنجش سرعت نت آزاد
+					await fetch("https://cp.cloudflare.com/generate_204", { method: "HEAD", signal: controller.signal });
+					clearTimeout(tid);
+					return new Response(JSON.stringify({ success: true, ping: (Date.now() - startT), country: "UN" }), { headers: { "Content-Type": "application/json" } });
+				} catch (e) {
+					return new Response(JSON.stringify({ error: "نت آزاد قطع است" }), { status: 200, headers: { "Content-Type": "application/json" } });
+				}
+			}
+			// ----------------------------------------
 			try {
 				let ip = "";
 				let workingProxy = proxy;
@@ -1012,7 +1027,9 @@ const Router = {
 				let targetHost = skip_country ? "1.1.1.1" : "ip-api.com";
 				let reqPath = skip_country ? "/" : "/json/?fields=countryCode";
 				const payload = new TextEncoder().encode("GET " + reqPath + " HTTP/1.1\r\nHost: " + targetHost + "\r\nConnection: close\r\n\r\n");
+				
 				const s = await connectProxy(proxy, targetHost, 80, payload);
+				
 				const reader = s.readable.getReader();
 				let resStr = "";
 				const dec = new TextDecoder();
@@ -1020,7 +1037,7 @@ const Router = {
 					try {
 						s.close();
 					} catch (e) { }
-				}, 3000);
+				}, 7000);
 				try {
 					while (true) {
 						const res = await reader.read();
@@ -3245,7 +3262,7 @@ async function connectSocks4(proxyStr, destAddr, destPort, initialData) {
 			req[9 + hostBytes.length] = 0x00;
 		}
 		await writer.write(req);
-		let res = await readWithTimeout(reader, 2000);
+		let res = await readWithTimeout(reader, 4000);
 		if (res.done || !res.value || res.value[0] !== 0x00 || res.value[1] !== 0x5a) {
 			throw new Error("پـروکـسـی SOCKS4 وصل نشد یا اتصال را رد کرد");
 		}
@@ -3314,7 +3331,7 @@ async function connectSocks5(socksStr, destAddr, destPort, initialData) {
 		} else {
 			await writer.write(new Uint8Array([0x05, 0x01, 0x00]));
 		}
-		let res = await readWithTimeout(reader, 2000);
+		let res = await readWithTimeout(reader, 4000);
 		if (res.done || !res.value || res.value[0] !== 0x05) throw new Error("پاسخ نامعتبر از سرور (پـروکـسـی SOCKS5 نیست یا خاموش است)");
 		const method = res.value[1];
 		if (method === 0x02) {
@@ -3327,7 +3344,7 @@ async function connectSocks5(socksStr, destAddr, destPort, initialData) {
 			authReq[2 + uEnc.length] = pEnc.length;
 			authReq.set(pEnc, 3 + uEnc.length);
 			await writer.write(authReq);
-			let authRes = await readWithTimeout(reader, 2000);
+			let authRes = await readWithTimeout(reader, 4000);
 			if (authRes.done || !authRes.value || authRes.value[1] !== 0x00) throw new Error("نام کاربری یا رمز عبور پـروکـسـی اشتباه است");
 		}
 		let addrType = 0x03;
@@ -3360,7 +3377,7 @@ async function connectSocks5(socksStr, destAddr, destPort, initialData) {
 		req[portOffset] = (destPort >> 8) & 0xff;
 		req[portOffset + 1] = destPort & 0xff;
 		await writer.write(req);
-		let connRes = await readWithTimeout(reader, 2000);
+		let connRes = await readWithTimeout(reader, 4000);
 		if (connRes.done || !connRes.value || connRes.value[1] !== 0x00) throw new Error("پـروکـسـی وصل شد اما دسترسی به اینترنت آزاد ندارد");
 		if (initialData && initialData.byteLength > 0) {
 			await writer.write(convertToUint8Array(initialData));
@@ -3396,7 +3413,7 @@ async function connectHttp(proxyStr, destAddr, destPort, initialData) {
 		let resStr = "";
 		const dec = new TextDecoder();
 		while (true) {
-			const res = await readWithTimeout(reader, 2000);
+			const res = await readWithTimeout(reader, 4000);
 			if (res.done || !res.value) throw new Error("proxy_closed");
 			resStr += dec.decode(res.value, { stream: true });
 			if (resStr.includes("\r\n\r\n")) {
@@ -4156,13 +4173,12 @@ const HTML_TEMPLATES = {
 			<div class="flex items-center justify-center gap-3 w-full md:w-auto mt-2 md:mt-0">
 				<button id="pwa-install-btn" onclick="triggerPwaInstall()"
 				    class="w-9 h-9 rounded-full inline-flex items-center justify-center
-				           bg-indigo-50 dark:bg-indigo-950/30
-				           border border-indigo-200 dark:border-indigo-900
-				           hover:bg-indigo-100 dark:hover:bg-indigo-900/50
-				           transition-all duration-200
-				           text-indigo-600 dark:text-indigo-400 shadow-sm cursor-pointer"
+				           bg-gradient-to-r from-indigo-500 to-purple-500
+				           hover:from-indigo-600 hover:to-purple-600
+				           transition-all duration-300
+				           text-white shadow-md hover:shadow-lg hover:shadow-indigo-500/30 transform hover:scale-110 cursor-pointer border-none"
 				    title="دانلود و نصب اپلیکیشن پنل">
-				    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+				    <svg class="w-5 h-5 drop-shadow-sm" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 				        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"></path>
 				    </svg>
 				</button>
@@ -5053,6 +5069,32 @@ const HTML_TEMPLATES = {
 						</div>
 						
 						<div id="tab-proxy-settings" class="user-tab-panel hidden space-y-4">
+						<!-- بخش جدید تست مستقیم -->
+							<div class="p-4 bg-sky-50/50 dark:bg-sky-950/20 border border-sky-200/60 dark:border-sky-900/40 rounded-xl flex flex-col gap-3 shadow-sm">
+								<div class="flex items-center justify-between">
+									<div class="flex items-center gap-2">
+										<svg class="w-4 h-4 text-sky-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+										<div>
+											<span class="text-xs font-black text-gray-800 dark:text-zinc-200">تست اتصال مستقیم (بدون پروکسی)</span>
+											<span class="text-[10px] text-gray-500 dark:text-zinc-400 block font-normal mt-0.5">تست ارتباط شما با کلودفلر و کلودفلر با نت آزاد</span>
+										</div>
+									</div>
+								</div>
+								<div class="grid grid-cols-2 gap-2 bg-white/60 dark:bg-amoled-bg/50 p-2.5 rounded-lg border border-sky-100 dark:border-sky-900/30">
+									<div class="flex flex-col items-center justify-center gap-1 border-l border-gray-200 dark:border-zinc-800">
+										<span class="text-[9px] font-bold text-gray-400">☁️ پینگ شما به کلودفلر</span>
+										<span id="client-to-server-ping" class="text-[10px] font-bold text-gray-600 dark:text-zinc-300">-</span>
+									</div>
+									<div class="flex flex-col items-center justify-center gap-1">
+										<span class="text-[9px] font-bold text-gray-400">🌍 پینگ کلودفلر به اینترنت آزاد</span>
+										<span id="server-to-net-ping" class="text-[10px] font-bold text-gray-600 dark:text-zinc-300">-</span>
+									</div>
+								</div>
+								<button type="button" id="test-direct-btn" onclick="testDirectPing()" class="w-full py-2 bg-transparent border-2 border-sky-500 text-sky-600 dark:text-sky-400 hover:bg-sky-50 dark:hover:bg-sky-900/20 rounded-lg text-xs font-bold transition shadow-sm flex items-center justify-center gap-1">
+									<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+									<span>تست اتصال مستقیم</span>
+								</button>
+							</div>
 							<div class="p-4 bg-gray-50/70 dark:bg-amoled-input/30 border border-gray-200/70 dark:border-amoled-border rounded-xl space-y-3">
 								<div class="flex items-center justify-between">
 									<div class="flex items-center gap-2">
@@ -6016,9 +6058,31 @@ ${COMMON_TOAST_HTML}
 				for (let i = 0; i < 8; i++) randStr += chars.charAt(Math.floor(Math.random() * chars.length));
 				const username = 'ZEUS-' + randStr;
 				
+				if (!cachedVipList || cachedVipList.length === 0) {
+					await initVipCache();
+				}
+				
 				let vipCountries = cachedVipList ? [...cachedVipList] : [];
+				
 				if (vipCountries.length < 1) {
-					alert('خطا: مخزن VIP شما در دسترس نیست یا خالی است.');
+					const fallbackCountries = ["DE", "US", "GB", "NL", "FR", "TR"];
+					await Promise.all(fallbackCountries.map(async (country) => {
+						try {
+							const resVip = await fetchWithFallbackUI('proxy_vip/' + country + '.txt');
+							if (resVip.ok) {
+								const text = await resVip.text();
+								const lines = text.split('\\n').map(l => l.trim()).filter(l => l.length > 5);
+								if (lines.length > 0) {
+									cachedVipProxies[country] = lines;
+									vipCountries.push(country);
+								}
+							}
+						} catch(e) {}
+					}));
+				}
+				
+				if (vipCountries.length < 1) {
+					alert('خطا: مخزن VIP شما در دسترس نیست یا ارتباط سرور کلودفلر قطع است.');
 					btn.disabled = false;
 					if (icon) {
 						icon.classList.remove('animate-spin');
@@ -6026,6 +6090,7 @@ ${COMMON_TOAST_HTML}
 					}
 					return;
 				}
+				
 				for (let i = vipCountries.length - 1; i > 0; i--) {
 					const j = Math.floor(Math.random() * (i + 1));
 					[vipCountries[i], vipCountries[j]] = [vipCountries[j], vipCountries[i]];
@@ -7793,6 +7858,8 @@ async function testUserSocksProxy() {
 	window.proxyPingMap = {};
 	const autoRotateCheck = document.getElementById('input-auto-rotate-user-proxy');
 	const isAutoRotate = autoRotateCheck ? autoRotateCheck.checked : false;
+
+	// تغییرات ظاهری اولیه (نمایش پیام در صف)
 	for (let idx = 0; idx < window.proxyFieldsData.length; idx++) {
 		const resultSpan = document.getElementById('proxy-ping-label-' + idx);
 		const proxyStr = (window.proxyFieldsData[idx] || "").trim();
@@ -7806,18 +7873,21 @@ async function testUserSocksProxy() {
 			}
 		}
 	}
-	for (let idx = 0; idx < window.proxyFieldsData.length; idx++) {
-		let proxyStr = (window.proxyFieldsData[idx] || "").trim();
-		if (!proxyStr) continue;
-		
+
+	// استارت پردازش موازی برای تمام فیلدها
+	const testTasks = window.proxyFieldsData.map(async (val, idx) => {
+		let proxyStr = (val || "").trim();
+		if (!proxyStr) return;
+
 		let resultSpan = document.getElementById('proxy-ping-label-' + idx);
 		if (resultSpan) {
 			resultSpan.innerText = 'در حال تست...';
 			resultSpan.className = 'text-[10px] font-bold text-amber-500 block mt-0.5 text-center';
 		}
+
 		const checkProxy = async (targetProxy) => {
 			const controller = new AbortController();
-			const timeoutId = setTimeout(() => controller.abort(), 8000); 
+			const timeoutId = setTimeout(() => controller.abort(), 10000); // تایم اوت مرورگر: ۱۰ ثانیه
 			try {
 				const res = await fetch('/api/test-proxy', {
 					method: 'POST',
@@ -7833,7 +7903,9 @@ async function testUserSocksProxy() {
 				return { ok: false, error: e.name === 'AbortError' ? 'تایم‌اوت' : 'خطا در ارتباط' };
 			}
 		};
+
 		let testRes = await checkProxy(proxyStr);
+
 		if (testRes.ok && testRes.data.success) {
 			resultSpan = document.getElementById('proxy-ping-label-' + idx);
 			const flag = typeof getFlagEmoji === 'function' ? getFlagEmoji(testRes.data.country) : '🌐';
@@ -7918,7 +7990,11 @@ async function testUserSocksProxy() {
 				}
 			}
 		}
-	}
+	});
+
+	// منتظر ماندن برای پایان تمام تست‌ها به صورت همزمان
+	await Promise.all(testTasks);
+
 	if (btn) {
 		btn.disabled = false;
 		btn.innerText = 'تست پـروکـسـی';
@@ -8154,7 +8230,7 @@ async function testUserSocksProxy() {
 				window.location.reload();
 			}
 		}
-const CURRENT_VERSION = '2.0.2';
+const CURRENT_VERSION = '2.0.3';
 const UPDATE_FIX = "constsCURRENT_VERSION='d.d.d'";
 		window.autoUpdateStatusCache = false;
 		async function checkAutoUpdateSetup() {
@@ -8928,6 +9004,74 @@ const WORKER_DONATE_URL = "https://si-491177.taile4bcbb.ts.net/donate";
 				content.classList.add('opacity-0', 'scale-95');
 			}
 		}
+		window.testDirectPing = async function() {
+			const btn = document.getElementById('test-direct-btn');
+			const clientPingEl = document.getElementById('client-to-server-ping');
+			const serverPingEl = document.getElementById('server-to-net-ping');
+
+			if (btn) {
+				btn.disabled = true;
+				btn.innerHTML = '<svg class="w-3.5 h-3.5 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg><span> در حال تست...</span>';
+			}
+			clientPingEl.innerText = 'تست...';
+			clientPingEl.className = 'text-[10px] font-bold text-amber-500';
+			serverPingEl.innerText = 'تست...';
+			serverPingEl.className = 'text-[10px] font-bold text-amber-500';
+
+			// ۱. گرفتن پینگ گوشی/سیستم کاربر تا سرور کلودفلر
+			let clientPing = '-';
+			try {
+				const startClient = Date.now();
+				await fetch('/icon.svg?t=' + startClient, { method: 'HEAD', cache: 'no-store' });
+				const elapsed = Date.now() - startClient;
+				clientPing = elapsed;
+				
+				let cColor = "text-red-500";
+				if (elapsed <= 150) cColor = "text-green-500";
+				else if (elapsed <= 300) cColor = "text-amber-500";
+				
+				clientPingEl.innerText = elapsed + ' ms';
+				clientPingEl.className = 'text-[10px] font-bold ' + cColor;
+			} catch (e) {
+				clientPingEl.innerText = 'خطا';
+				clientPingEl.className = 'text-[10px] font-bold text-red-500';
+			}
+
+			// ۲. گرفتن پینگ سرور کلودفلر تا اینترنت آزاد
+			try {
+				const controller = new AbortController();
+				const timeoutId = setTimeout(() => controller.abort(), 6000);
+				const res = await fetch('/api/test-proxy', {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify({ proxy: 'direct', skip_country: true }),
+					signal: controller.signal
+				});
+				clearTimeout(timeoutId);
+				const data = await res.json();
+				
+				if (res.ok && data.success) {
+					const sPing = data.ping;
+					let sColor = "text-red-500";
+					if (sPing <= 50) sColor = "text-green-500";
+					else if (sPing <= 150) sColor = "text-amber-500";
+					
+					serverPingEl.innerText = sPing + ' ms';
+					serverPingEl.className = 'text-[10px] font-bold ' + sColor;
+				} else {
+					serverPingEl.innerText = 'خطا';
+					serverPingEl.className = 'text-[10px] font-bold text-red-500 text-center';
+				}
+			} catch (e) {
+				serverPingEl.innerText = 'خطا';
+				serverPingEl.className = 'text-[10px] font-bold text-red-500 text-center';
+			}
+
+			if (btn) {
+				btn.disabled = false;
+				btn.innerHTML = '<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg><span>تست اتصال مستقیم</span>';
+			}
+		};
 	</script>
 	${COMMON_WAVES_SCRIPT}
 	  </body>
