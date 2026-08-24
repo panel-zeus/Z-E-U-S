@@ -1,46 +1,47 @@
-
-
 <div align="center">
-  
+ 
 # ⚡ ZEUS PANEL
-
-[![Version](https://img.shields.io/badge/Version-v1.11.11-blue.svg?style=for-the-badge&logo=cloudflare)](https://github.com/zeus-panel/ZEUS-PANEL)
+[![Version](https://img.shields.io/badge/Version-v2.0.5-blue.svg?style=for-the-badge&logo=cloudflare)](https://github.com/zeus-panel/ZEUS-PANEL)
 [![Platform](https://img.shields.io/badge/Platform-Cloudflare%20Workers-f38020.svg?style=for-the-badge&logo=cloudflare&logoColor=white)](https://workers.cloudflare.com/)
 [![License](https://img.shields.io/badge/License-Proprietary%20(Non--Commercial)-red.svg?style=for-the-badge)](https://github.com/zeus-panel/ZEUS-PANEL/blob/main/LICENSE)
 [![Telegram](https://img.shields.io/badge/Community-PANEL__ZEUS-2CA5E0.svg?style=for-the-badge&logo=telegram)](https://t.me/PANEL_ZEUS)
 </div>
 
-<img  src="https://raw.githubusercontent.com/panel-zeus/Z-E-U-S/refs/heads/main/photos/dark.png"  width="100%"  alt="Zeus Panel Dark Mode"  style="border-radius: 12px; margin-bottom: 15px;">
-
-  
-<img  src="https://raw.githubusercontent.com/panel-zeus/Z-E-U-S/refs/heads/main/photos/add.png"  width="100%"  alt="Zeus Panel Dark Mode"  style="border-radius: 12px; margin-bottom: 15px;">
-
-  
-
-<table  width="100%">
-
+<table width="100%">
 <tr>
-
 <td width="50%" valign="middle" align="center">
-
-<img  src="https://raw.githubusercontent.com/panel-zeus/Z-E-U-S/refs/heads/main/photos/bot.png"  width="100%"  alt="Zeus Panel Status"  style="border-radius: 12px;">
-
+<img src="https://raw.githubusercontent.com/panel-zeus/Z-E-U-S/refs/heads/main/photos/dark.png" width="100%" alt="Zeus Panel Dark Mode" style="border-radius: 12px;">
 </td>
-
 <td width="50%" valign="middle" align="center">
-
-<img  src="https://raw.githubusercontent.com/panel-zeus/Z-E-U-S/refs/heads/main/photos/status.png"  width="100%"  alt="Zeus Panel Dark Mode"  style="border-radius: 12px;">
-
+<img src="https://raw.githubusercontent.com/panel-zeus/Z-E-U-S/refs/heads/main/photos/1.png" width="100%" alt="Zeus Panel Screenshot 1" style="border-radius: 12px;">
 </td>
-
 </tr>
-
+<tr>
+<td width="50%" valign="middle" align="center">
+<img src="https://raw.githubusercontent.com/panel-zeus/Z-E-U-S/refs/heads/main/photos/2.png" width="100%" alt="Zeus Panel Screenshot 2" style="border-radius: 12px;">
+</td>
+<td width="50%" valign="middle" align="center">
+<img src="https://raw.githubusercontent.com/panel-zeus/Z-E-U-S/refs/heads/main/photos/3.png" width="100%" alt="Zeus Panel Screenshot 3" style="border-radius: 12px;">
+</td>
+</tr>
+</table>
+ 
+<table width="100%">
+<tr>
+<td width="50%" valign="middle" align="center">
+<img src="https://raw.githubusercontent.com/panel-zeus/Z-E-U-S/refs/heads/main/photos/bot.png" width="100%" alt="Zeus Panel Status" style="border-radius: 12px;">
+</td>
+<td width="50%" valign="middle" align="center">
+<img src="https://raw.githubusercontent.com/panel-zeus/Z-E-U-S/refs/heads/main/photos/status.png" width="100%" alt="Zeus Panel Dark Mode" style="border-radius: 12px;">
+</td>
+</tr>
 </table>
 
+<div align="center">
 
 [⚡️ Key Features](#️-features) • [🚀 Deployment Guide](#-quick-deployment-guide) • [🔎 IP Scanner](#-clean-ip-scanner) • [🛡️ SOCKS5 Proxy](#️-build-your-own-socks5-proxy-zeus-relay) • [❤️ Donate](#-donate--support) • [⚖️ License & Copyright](#license-copyright) • [Credits](#credits-section)
-
 </div>
+
 
 > [!CAUTION]
 > **Security Notice**
@@ -48,42 +49,49 @@
 
 ---
 
-# ⚡️ Features
-🌍 Multi-Location Routing: Seamlessly assign up to five distinct proxies or geographic locations simultaneously to individual users, providing diversified connection pathways.
 
-⚡️ Smart Buffering Engine: Advanced dynamic data transfer management implemented to significantly boost overall connection speed and stability.
+## <a id="features"></a>⚡️ Features & Capabilities
 
-👥 Advanced User Management: Enforce strict limits based on traffic volume (GB), time expiration (Days), total requests, and concurrent devices, featuring highly accurate tracking for CGNAT and mobile network environments.
+**🚀 Core Protocols & Routing**
+* 📡 Dual Protocol Support: Native, highly optimized support for both VLESS and Trojan protocols over WebSocket, allowing simultaneous multi-protocol config generation.
+* 🌍 Multi-Location Routing (Up to 8 Proxies): Seamlessly assign up to 8 distinct proxies or geographic locations simultaneously to individual users.
+* 🔀 Automated Proxy Fallback: Intelligent auto-replacement of failing upstream user proxies with healthy nodes dynamically fetched from dedicated VIP proxy repositories.
+* 🌐 Dynamic IP Rotation: Automated rotation of Clean Cloudflare Edge IPs at custom, user-defined intervals (e.g., every 5 minutes).
 
-♻️ Automated Quota Resets: Scheduled auto-reset capabilities for volume and request counters based on specified timeframes.
+**🛡 Advanced Anti-Filtering & DPI Bypass**
+* 🧩 Advanced TLS Fragmentation: Built-in TLS Fragment support (length and interval) to bypass deep packet inspection (DPI).
+* 🇮🇷 ISP-Specific Presets: One-click optimized fragmentation presets for specific network operators (MCI, Irancell, Rightel, TCI, and Gaming mode).
+* 🎭 Patterniha (PattN/PattNG) Integration: Native support for advanced JSON fragmentation (fm), Custom Cipher Suites (cs), and TLS Masking (Custom SNI/Host) for ultimate stealth.
+* 🕵️ ClientHello Fingerprint Simulator: Dynamically spoof browser fingerprints (Chrome, Safari, iOS, Android, Edge, Randomized, Unsafe) to evade censorship.
 
-🛠 Bulk Operations: Comprehensive multi-select tools for batch user editing, deletion, and quota resets.
+**👥 Advanced User Management & Billing**
+* ⚖️ Strict Quota Enforcement: Set precise limits based on Traffic Volume (GB), Time Expiration (Days), Total Requests, and Concurrent Devices (IP Limit).
+* ⏳ Start on First Connect: Option to delay the countdown of a user's subscription time until their very first successful connection.
+* ♻️ Automated Quota Resets: Scheduled auto-reset capabilities for volume and request counters based on user-specific timeframes.
+* 🛠 Bulk Operations: Comprehensive multi-select tools for batch user status toggling, deletion, and quota/time resets.
 
-🛡 Anti-Filtering Mechanisms: Built-in TLS Fragment support and custom ClientHello Fingerprint simulators to bypass DPI.
+**🛑 Security & Content Control**
+* 🚫 Smart Content Blocker: Integrated DNS-over-HTTPS (DoH) engine to actively intercept and block NSFW (Porn) content and advertisements per user.
+* 🔐 Panel Auth Protection: Secure SHA-256 hashed panel password with built-in brute-force protection mechanisms (temporary bans after failed login attempts).
+* 🔏 Anti-Tamper & DRM: Mathematically entangled core and integrity checks to prevent code manipulation and unauthorized white-labeling.
 
-📱 Modern UI: A responsive, mobile-friendly interface built with Tailwind CSS, featuring full AMOLED Dark Mode.
+**📱 UI/UX & Ecosystem**
+* 📲 Progressive Web App (PWA): Fully installable on iOS, Android, and Desktop as a standalone application for a native app-like experience.
+* 🌙 Modern AMOLED UI: A responsive, mobile-friendly interface built with Tailwind CSS, featuring full AMOLED Dark Mode, smooth 3D background waves (Three.js), and interactive UI elements.
+* 🔗 Self-Service Portals: Auto-generation of robust Subscription Links, QR codes, and dedicated real-time status pages for every user.
 
-🛑 Smart Content Blocker: Integrated DNS-over-HTTPS (DoH) engine to actively intercept and block NSFW content and advertisements.
+**🛠 Built-in Diagnostic & Automation Tools**
+* 🔍 Built-in Scanners: Integrated Clean IP Scanner (with Pydroid & CMD copy-paste scripts) and VIP Proxy Scanner directly inside the panel.
+* 📡 Live Ping & Direct Test: In-panel utility to test direct ping from the user to Cloudflare, and from Cloudflare to the global internet.
+* 📊 Live CF Quota Monitoring: Real-time tracking of Cloudflare Worker requests (Total and Daily) with visual progress bars to proactively prevent account 100k limit bans.
+* 🔄 OTA Core Updates: Automated edge deployment system updating the panel directly from the official repository without database or data loss.
+* 🗄 Complete Backup System: Full JSON export and import utility covering the entire D1 database, users, and server configuration state.
 
-🌐 Dynamic IP Rotation: Automated rotation of clean Cloudflare edge IPs at custom, user-defined intervals.
+**🤖 Automation & Deployment**
+* 🚀 One-Click Deployment: Complete provisioning of the panel, subdomain, and D1 database directly via the Telegram Bot.
+* 👥 Multi-Account Bot Management: Simultaneously manage multiple Cloudflare accounts, execute panel updates, and recover passwords securely.
+* ☁️ Cloudflare Ecosystem Optimized: Architected strictly within Cloudflare limits, utilizing intelligent D1 connection pooling and Queue batching mechanisms for maximum operational efficiency.
 
-🔀 Automated Proxy Fallback: Intelligent auto-replacement of failing upstream user proxies with healthy nodes dynamically fetched from dedicated VIP proxy repositories.
-
-📊 Live Quota Monitoring: Real-time tracking of Cloudflare Worker requests to proactively prevent account bans or suspensions.
-
-🔗 Self-Service Portals: Auto-generation of robust, case-insensitive Subscription Links, QR codes, and dedicated real-time status pages for every user.
-
-🔄 OTA Core Updates: Automated edge deployment system updating the panel directly without database or data loss.
-
-🗄 Complete Backup System: Full JSON export and import utility covering the entire database, server configuration state, and advanced user proxy preferences.
-
-🚀 One-Click Deployment: Complete provisioning of the panel, subdomain, and D1 database directly via the Telegram Bot.
-
-🤖 Multi-Account Bot Management: Simultaneously manage multiple Cloudflare accounts, execute panel updates, and recover passwords using the Telegram Bot.
-
-🔌 Comprehensive Port Support: Native support for all Cloudflare TLS and non-TLS ports, including configurations for custom network ports.
-
-☁️ Cloudflare Ecosystem Optimized: Architected strictly within Cloudflare infrastructure limits, utilizing intelligent D1 connection pooling and Queue batching mechanisms for maximum operational efficiency.
 
 ---
 
