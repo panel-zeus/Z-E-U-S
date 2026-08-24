@@ -1,3 +1,8 @@
+<p align="center">
+  🇬🇧 <a href="README.md">English</a> &nbsp;|&nbsp;
+  🇮🇷 <a href="README.fa.md">فارسی</a>
+</p>
+
 <div align="center">
  
 # ⚡ ZEUS PANEL
