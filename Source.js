@@ -1154,6 +1154,15 @@ const Router = {
 					}
 				}
 				if (request.method === "DELETE") {
+					try {
+						const userToDelete = await env.DB.prepare("SELECT lifetime_used_gb, used_gb FROM users WHERE username = ?").bind(username).first();
+						if (userToDelete) {
+							const gbToKeep = userToDelete.lifetime_used_gb || userToDelete.used_gb || 0;
+							if (gbToKeep > 0) {
+								await env.DB.prepare("INSERT INTO settings (key, value) VALUES ('deleted_users_gb', ?) ON CONFLICT(key) DO UPDATE SET value = CAST(value AS REAL) + ?").bind(String(gbToKeep), String(gbToKeep)).run();
+							}
+						}
+					} catch(e) {}
 					await env.DB.prepare("DELETE FROM users WHERE username = ?").bind(username).run();
 					return new Response(JSON.stringify({ success: true }), { headers: { "Content-Type": "application/json" } });
 				}
@@ -1194,12 +1203,18 @@ const Router = {
 							cfReqs.today = dbToday + GLOBAL_REQ_COUNT;
 							cfReqs.total = dbTotal + GLOBAL_REQ_COUNT;
 						} catch (e) { }
+						let deletedGb = 0;
+						try {
+							const delRow = await env.DB.prepare("SELECT value FROM settings WHERE key = 'deleted_users_gb'").first();
+							if (delRow) deletedGb = parseFloat(delRow.value) || 0;
+						} catch (e) {}
 						return new Response(
 							JSON.stringify({
 								users: enrichedUsers,
 								serverTime: now,
 								cfRequestsToday: cfReqs.today,
 								cfRequestsTotal: cfReqs.total,
+								deletedGb: deletedGb,
 							}),
 							{
 								headers: {
@@ -4570,7 +4585,7 @@ const HTML_TEMPLATES = {
 					<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
 					اندروید (PattNG)
 				</a>
-				<a href="https://github.com/patterniha/PattN/releases/download/7.24.8-P2/PattN-windows-64.zip" target="_blank" class="w-full py-3 bg-[#33FB1F]/10 hover:bg-[#33FB1F]/20 text-[#33FB1F] border border-[#33FB1F]/50 font-black rounded-md text-xs transition duration-300 shadow-[0_0_10px_rgba(51,251,31,0.2)] flex items-center justify-center gap-1.5">
+				<a href="https://github.com/patterniha/PattN/releases/download/7.24.8-P5/PattN-windows-64.zip" target="_blank" class="w-full py-3 bg-[#33FB1F]/10 hover:bg-[#33FB1F]/20 text-[#33FB1F] border border-[#33FB1F]/50 font-black rounded-md text-xs transition duration-300 shadow-[0_0_10px_rgba(51,251,31,0.2)] flex items-center justify-center gap-1.5">
 					<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
 					ویندوز (PattN)
 				</a>
@@ -5042,7 +5057,7 @@ const HTML_TEMPLATES = {
 									<div class="flex items-center gap-2">
 										<svg class="w-4 h-4 text-purple-600 dark:text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
 										<span class="text-xs font-black text-purple-900 dark:text-purple-300">تنظیمات پیشرفته TLS Mask</span>
-										<span onclick="event.stopPropagation(); togglePattNgModal(true)" class="mr-2 px-1.5 py-0.5 bg-[#33FB1F]/10 text-[#33FB1F] border border-[#33FB1F]/30 rounded text-[10px] hover:bg-[#33FB1F]/20 transition-colors shadow-[0_0_8px_rgba(51,251,31,0.3)] animate-pulse cursor-pointer">🚨مهم🚨</span>
+										<span onclick="event.stopPropagation(); togglePattNgModal(true)" class="mr-2 px-1.5 py-0.5 bg-[#33FB1F]/10 text-[#33FB1F] border border-[#33FB1F]/30 rounded text-[10px] hover:bg-[#33FB1F]/20 transition-colors shadow-[0_0_8px_rgba(51,251,31,0.3)] animate-pulse cursor-pointer">مهم🚨</span>
 									</div>
 									<div class="flex items-center gap-2" onclick="event.stopPropagation()">
 										<label class="relative inline-flex items-center cursor-pointer select-none">
@@ -5160,7 +5175,7 @@ const HTML_TEMPLATES = {
 									<svg class="w-4 h-4 text-red-500" fill="currentColor" viewBox="0 0 24 24"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3 9.24 3 10.91 3.81 12 5.08 13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>
 									<span>اهدای پروکسی شخصی به مخزن</span>
 								</button>
-								<button type="button" onclick="copyScannerCode('bash <(curl -sL https://hoplimit.shop/zeus-relay.sh | tr -d &quot;\\r&quot;)', this)" class="py-2.5 px-3 bg-transparent border-2 border-blue-500 text-blue-600 dark:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-sm">
+								<button type="button" onclick="copyScannerCode('bash <(curl -sL https://hoplimit.shop/zeus-relay.sh | tr -d &quot;\\\\r&quot;)', this)" class="py-2.5 px-3 bg-transparent border-2 border-blue-500 text-blue-600 dark:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-sm">
 									<svg class="w-4 h-4 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
 									<span>کپی دستور ساخت پروکسی ریلی</span>
 								</button>
@@ -5894,6 +5909,11 @@ ${COMMON_TOAST_HTML}
 				if (show) {
 					container.classList.remove('opacity-50', 'pointer-events-none', 'hidden');
 					if (icon) icon.classList.add('rotate-180');
+					const fragToggle = document.getElementById('input-frag-toggle');
+					if (fragToggle && fragToggle.checked) {
+						fragToggle.checked = false;
+						if (typeof window.toggleFragInputs === 'function') window.toggleFragInputs(false);
+					}
 				} else {
 					container.classList.add('opacity-50', 'pointer-events-none', 'hidden');
 					if (icon) icon.classList.remove('rotate-180');
@@ -5968,6 +5988,11 @@ ${COMMON_TOAST_HTML}
 				if (show) {
 					container.classList.remove('hidden', 'opacity-50', 'pointer-events-none');
 					if (icon) icon.classList.add('rotate-180');
+					const advToggle = document.getElementById('input-advanced-settings-toggle');
+					if (advToggle && advToggle.checked) {
+						advToggle.checked = false;
+						if (typeof window.toggleAdvancedSettingsInputs === 'function') window.toggleAdvancedSettingsInputs(false);
+					}
 				} else {
 					container.classList.add('hidden', 'opacity-50', 'pointer-events-none');
 					if (icon) icon.classList.remove('rotate-180');
@@ -6033,6 +6058,7 @@ ${COMMON_TOAST_HTML}
 				if (fragLenInput) fragLenInput.value = '200-3000';
 				const fragIntInput = document.getElementById('input-frag-int');
 				if (fragIntInput) fragIntInput.value = '1-2';
+				document.querySelectorAll('.frag-preset-card').forEach(card => card.classList.remove('ring-2', 'ring-blue-500', 'border-blue-500', 'bg-blue-50/50', 'dark:bg-blue-950/40'));
 				const fragToggle = document.getElementById('input-frag-toggle');
 				if (fragToggle) fragToggle.checked = false;
 				if (typeof window.toggleFragInputs === 'function') window.toggleFragInputs(false);
@@ -6403,7 +6429,8 @@ ${COMMON_TOAST_HTML}
 				window.lastServerTime = serverTime;
 				const totalUsersCount = users.length;
 				const activeUsersCount = users.reduce((sum, u) => sum + (u.online_count || 0), 0);
-				const totalGbUsage = users.reduce((sum, u) => sum + (u.lifetime_used_gb || u.used_gb || 0), 0);
+				const deletedGb = data.deletedGb || 0;
+				const totalGbUsage = deletedGb + users.reduce((sum, u) => sum + (u.lifetime_used_gb || u.used_gb || 0), 0);
 				document.getElementById('stat-total-users').innerText = totalUsersCount;
 				document.getElementById('stat-active-users').innerText = activeUsersCount;
 				document.getElementById('stat-total-usage').innerText = totalGbUsage < 1 ? (totalGbUsage * 1024).toFixed(0) + ' MB' : totalGbUsage.toFixed(2) + ' GB';
@@ -7706,6 +7733,12 @@ function editUser(encodedUsername) {
 	if (fragLenInput) fragLenInput.value = user.frag_len || '200-3000';
 	const fragIntInput = document.getElementById('input-frag-int');
 	if (fragIntInput) fragIntInput.value = user.frag_int || '1-2';
+	document.querySelectorAll('.frag-preset-card').forEach(card => card.classList.remove('ring-2', 'ring-blue-500', 'border-blue-500', 'bg-blue-50/50', 'dark:bg-blue-950/40'));
+	if (user.frag_len === '10-30' && user.frag_int === '2-5') { const b = document.querySelector('button[onclick*="mci"]'); if(b) b.classList.add('ring-2', 'ring-blue-500', 'border-blue-500', 'bg-blue-50/50', 'dark:bg-blue-950/40'); }
+	else if (user.frag_len === '100-200' && user.frag_int === '5-10') { const b = document.querySelector('button[onclick*="irancell"]'); if(b) b.classList.add('ring-2', 'ring-blue-500', 'border-blue-500', 'bg-blue-50/50', 'dark:bg-blue-950/40'); }
+	else if (user.frag_len === '50-100' && user.frag_int === '2-5') { const b = document.querySelector('button[onclick*="rightel"]'); if(b) b.classList.add('ring-2', 'ring-blue-500', 'border-blue-500', 'bg-blue-50/50', 'dark:bg-blue-950/40'); }
+	else if (user.frag_len === '50-200' && user.frag_int === '1-3') { const b = document.querySelector('button[onclick*="tci"]'); if(b) b.classList.add('ring-2', 'ring-blue-500', 'border-blue-500', 'bg-blue-50/50', 'dark:bg-blue-950/40'); }
+	else if (user.frag_len === '200-3000' && user.frag_int === '1-2') { const b = document.querySelector('button[onclick*="gaming"]'); if(b) b.classList.add('ring-2', 'ring-blue-500', 'border-blue-500', 'bg-blue-50/50', 'dark:bg-blue-950/40'); }
 	const hasFrag = Boolean(user.frag_len || user.frag_int);
 	const fragToggle = document.getElementById('input-frag-toggle');
 	if (fragToggle) fragToggle.checked = hasFrag;
@@ -8030,12 +8063,7 @@ async function testUserSocksProxy() {
 				return;
 			}
 			try {
-				const settingsRes = await fetch('/api/settings/bulk');
-				const settingsData = await settingsRes.json();
-				const backupData = {
-					users: window.allUsers,
-					settings: settingsData
-				};
+				const backupData = window.allUsers;
 				const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(backupData, null, 2));
 				const downloadAnchor = document.createElement('a');
 				const host = window.location.hostname;
@@ -8047,12 +8075,12 @@ async function testUserSocksProxy() {
 					String(now.getMinutes()).padStart(2, '0') + '-' + 
 					String(now.getSeconds()).padStart(2, '0');
 				downloadAnchor.setAttribute("href", dataStr);
-				downloadAnchor.setAttribute("download", "zeus_backup_" + host + "_" + dateTimeStr + ".json");
+				downloadAnchor.setAttribute("download", "zeus_users_backup_" + host + "_" + dateTimeStr + ".json");
 				document.body.appendChild(downloadAnchor);
 				downloadAnchor.click();
 				downloadAnchor.remove();
 			} catch (err) {
-				alert('❌ خطا در دریافت تنظیمات برای بک‌آپ.');
+				alert('❌ خطا در تهیه نسخه پشتیبان.');
 			}
 		}
 		function triggerImportBackup() {
@@ -8112,6 +8140,44 @@ async function testUserSocksProxy() {
 						if (importBtn) {
 							importBtn.innerText = '⏳ بازیابی (' + currentStep + '/' + validBackupUsers.length + ')';
 						}
+
+						// پکیج کامل اطلاعات کاربر شامل تمام متغیرهای جدید
+						const userDataPayload = {
+							username: u.username,
+							uuid: u.uuid,
+							limit_gb: u.limit_gb,
+							expiry_days: u.expiry_days,
+							limit_req: u.limit_req,
+							ips: u.ips,
+							tls: u.tls,
+							port: u.port,
+							fingerprint: u.fingerprint,
+							ip_limit: u.ip_limit !== undefined ? u.ip_limit : u.max_connections,
+							used_gb: u.used_gb,
+							used_req: u.used_req,
+							created_at: u.created_at,
+							is_active: u.is_active,
+							block_porn: u.block_porn,
+							block_ads: u.block_ads,
+							frag_len: u.frag_len,
+							frag_int: u.frag_int,
+							advanced_frag: u.advanced_frag,
+							cipher_suites: u.cipher_suites,
+							tls_mask: u.tls_mask,
+							user_proxy_iata: u.user_proxy_iata,
+							user_socks5: u.user_socks5,
+							user_proxy_ip: u.user_proxy_ip,
+							auto_reset_vol_days: u.auto_reset_vol_days,
+							auto_reset_req_days: u.auto_reset_req_days,
+							auto_rotate_ip: u.auto_rotate_ip,
+							rotate_time: u.rotate_time,
+							ip_operator: u.ip_operator,
+							ip_count: u.ip_count,
+							auto_rotate_user_proxy: u.auto_rotate_user_proxy,
+							start_on_first_connect: u.start_on_first_connect,
+							connection_type: u.connection_type
+						};
+
 						const exists = existingUsernames.has(u.username);
 						if (exists) {
 							if (overwrite) {
@@ -8120,36 +8186,7 @@ async function testUserSocksProxy() {
 									const res = await fetch('/api/users', {
 										method: 'POST',
 										headers: { 'Content-Type': 'application/json' },
-										body: JSON.stringify({
-											username: u.username,
-											uuid: u.uuid,
-											limit_gb: u.limit_gb,
-											expiry_days: u.expiry_days,
-											limit_req: u.limit_req,
-											ips: u.ips,
-											tls: u.tls,
-											port: u.port,
-											fingerprint: u.fingerprint,
-											ip_limit: u.ip_limit !== undefined ? u.ip_limit : u.max_connections,
-											used_gb: u.used_gb,
-											used_req: u.used_req,
-											created_at: u.created_at,
-											is_active: u.is_active,
-											block_porn: u.block_porn,
-											block_ads: u.block_ads,
-											frag_len: u.frag_len,
-											frag_int: u.frag_int,
-											user_proxy_iata: u.user_proxy_iata,
-											user_socks5: u.user_socks5,
-											user_proxy_ip: u.user_proxy_ip,
-											auto_reset_vol_days: u.auto_reset_vol_days,
-											auto_reset_req_days: u.auto_reset_req_days,
-											auto_rotate_ip: u.auto_rotate_ip,
-											rotate_time: u.rotate_time,
-											ip_operator: u.ip_operator,
-											ip_count: u.ip_count,
-											auto_rotate_user_proxy: u.auto_rotate_user_proxy
-										})
+										body: JSON.stringify(userDataPayload)
 									});
 									if (res.ok) successCount++;
 								} catch(err) {}
@@ -8159,36 +8196,7 @@ async function testUserSocksProxy() {
 								const res = await fetch('/api/users', {
 									method: 'POST',
 									headers: { 'Content-Type': 'application/json' },
-									body: JSON.stringify({
-										username: u.username,
-										uuid: u.uuid,
-										limit_gb: u.limit_gb,
-										expiry_days: u.expiry_days,
-										limit_req: u.limit_req,
-										ips: u.ips,
-										tls: u.tls,
-										port: u.port,
-										fingerprint: u.fingerprint,
-										ip_limit: u.ip_limit !== undefined ? u.ip_limit : u.max_connections,
-										used_gb: u.used_gb,
-										used_req: u.used_req,
-										created_at: u.created_at,
-										is_active: u.is_active,
-										block_porn: u.block_porn,
-										block_ads: u.block_ads,
-										frag_len: u.frag_len,
-										frag_int: u.frag_int,
-										user_proxy_iata: u.user_proxy_iata,
-										user_socks5: u.user_socks5,
-										user_proxy_ip: u.user_proxy_ip,
-										auto_reset_vol_days: u.auto_reset_vol_days,
-										auto_reset_req_days: u.auto_reset_req_days,
-										auto_rotate_ip: u.auto_rotate_ip,
-										rotate_time: u.rotate_time,
-										ip_operator: u.ip_operator,
-										ip_count: u.ip_count,
-										auto_rotate_user_proxy: u.auto_rotate_user_proxy
-									})
+									body: JSON.stringify(userDataPayload)
 								});
 								if (res.ok) successCount++;
 							} catch(err) {}
@@ -8254,7 +8262,7 @@ async function testUserSocksProxy() {
 				window.location.reload();
 			}
 		}
-const CURRENT_VERSION = '2.0.4';
+const CURRENT_VERSION = '2.0.5';
 const UPDATE_FIX = "constsCURRENT_VERSION='d.d.d'";
 		window.autoUpdateStatusCache = false;
 		async function checkAutoUpdateSetup() {
