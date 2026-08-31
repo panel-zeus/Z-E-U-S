@@ -390,7 +390,12 @@ export default {
 			if (url.pathname.startsWith("/status/")) {
 				return await Router.handleUserStatus(url, env);
 			}
-			return new Response(HTML_TEMPLATES.nginx, {
+			let gfxSetting = 'false';
+			try {
+				const gfxRow = await env.DB.prepare("SELECT value FROM settings WHERE key = 'gfx_enabled'").first();
+				if (gfxRow && gfxRow.value === '1') gfxSetting = 'true';
+			} catch (e) {}
+			return new Response(HTML_TEMPLATES.nginx.replace(/\/\*\{\{GFX_SETTING\}\}\*\//g, gfxSetting), {
 				headers: { "Content-Type": "text/html; charset=utf-8" },
 			});
 		} catch (err) {
@@ -513,7 +518,7 @@ const Router = {
 		return upgradeHeader === "websocket" && _LLM_TRAP.length > 0;
 	},
 	isSubscriptionPath(pathname) {
-		return pathname.startsWith("/sub/") || pathname.startsWith("/feed/");
+		return pathname.startsWith("/sub/") || pathname.startsWith("/feed/") || pathname.startsWith("/singbox/");
 	},
 	async handleWebSocket(request, env, ctx) {
 		try {
@@ -523,8 +528,9 @@ const Router = {
 		}
 	},
 	async handleSubscription(url, env) {
+		const isSingbox = url.pathname.startsWith("/singbox/");
 		const isSubPath = url.pathname.startsWith("/sub/");
-		const offset = isSubPath ? 5 : 6;
+		const offset = isSingbox ? 9 : (isSubPath ? 5 : 6);
 		let subUser = safeDecodeURI(url.pathname.slice(offset));
 		const host = url.hostname;
 		try {
@@ -535,6 +541,9 @@ const Router = {
 			try {
 				await env.DB.prepare("UPDATE users SET used_req = used_req + 1 WHERE username = ?").bind(user.username).run();
 			} catch (e) { }
+			if (isSingbox) {
+				return await SubscriptionService.generateSingbox(user, host);
+			}
 			return await SubscriptionService.generateText(user, host);
 		} catch (err) {
 			return new Response("Error building config: " + err.message, { status: 500 });
@@ -542,18 +551,24 @@ const Router = {
 	},
 	async handlePanel(request, env) {
 		const hasPassword = await DbService.getPanelPassword(env.DB);
+		let gfxSetting = 'false';
+			try {
+				const gfxRow = await env.DB.prepare("SELECT value FROM settings WHERE key = 'gfx_enabled'").first();
+				if (gfxRow && gfxRow.value === '1') gfxSetting = 'true';
+			} catch (e) {}
+		
 		if (!hasPassword) {
-			return new Response(HTML_TEMPLATES.setup, {
+			return new Response(HTML_TEMPLATES.setup.replace(/\/\*\{\{GFX_SETTING\}\}\*\//g, gfxSetting), {
 				headers: { "Content-Type": "text/html; charset=utf-8" },
 			});
 		}
 		const authorized = await DbService.verifyApiAuth(request, env);
 		if (!authorized) {
-			return new Response(HTML_TEMPLATES.login, {
+			return new Response(HTML_TEMPLATES.login.replace(/\/\*\{\{GFX_SETTING\}\}\*\//g, gfxSetting), {
 				headers: { "Content-Type": "text/html; charset=utf-8" },
 			});
 		}
-		return new Response(HTML_TEMPLATES.panel, {
+		return new Response(HTML_TEMPLATES.panel.replace(/\/\*\{\{GFX_SETTING\}\}\*\//g, gfxSetting), {
 			headers: {
 				"Content-Type": "text/html; charset=utf-8",
 				"Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
@@ -602,16 +617,23 @@ const Router = {
 				user_proxy_ip: user.user_proxy_ip,
 				start_on_first_connect: user.start_on_first_connect,
 				first_connection_time: user.first_connection_time,
+				enable_direct: user.enable_direct !== 0 ? 1 : 0,
 			});
 			const html = HTML_TEMPLATES.status.replace("/* {{USER_DATA_PLACEHOLDER}} */", `window.statusUser = ${userJson};`);
 			const finalHtml = html + "\n<!-- HIDDEN_CONFIGS -->\n<div style='display:none; white-space:pre-wrap;'>\n" + plainLinks + "\n</div>";
+			let gfxSetting = 'false';
+			try {
+				const gfxRow = await env.DB.prepare("SELECT value FROM settings WHERE key = 'gfx_enabled'").first();
+				if (gfxRow && gfxRow.value === '1') gfxSetting = 'true';
+			} catch (e) {}
+			const replacedHtml = finalHtml.replace(/\/\*\{\{GFX_SETTING\}\}\*\//g, gfxSetting);
 			try {
 				const ua = (request.headers.get("User-Agent") || "").toLowerCase();
 				if (!ua.includes("mozilla") && !ua.includes("chrome") && !ua.includes("safari")) {
 					await env.DB.prepare("UPDATE users SET used_req = used_req + 1 WHERE username = ?").bind(user.username).run();
 				}
 			} catch (e) { }
-			return new Response(finalHtml, {
+			return new Response(replacedHtml, {
 				headers: { "Content-Type": "text/html; charset=utf-8" },
 			});
 		} catch (err) {
@@ -1113,7 +1135,7 @@ const Router = {
 						}
 						return new Response(JSON.stringify({ success: true }), { headers: { "Content-Type": "application/json" } });
 					} else {
-						const { username: new_username, limit_gb, expiry_days, limit_req, ips, tls, port, fingerprint, ip_limit, block_porn, block_ads, frag_len, frag_int, advanced_frag, cipher_suites, tls_mask, user_proxy_iata, user_socks5, user_proxy_ip, auto_reset_vol_days, auto_reset_req_days, auto_rotate_ip, rotate_time, ip_operator, ip_count, auto_rotate_user_proxy, start_on_first_connect, connection_type, protocols } = body;
+						const { username: new_username, limit_gb, expiry_days, limit_req, ips, tls, port, fingerprint, ip_limit, block_porn, block_ads, frag_len, frag_int, advanced_frag, cipher_suites, tls_mask, user_proxy_iata, user_socks5, user_proxy_ip, auto_reset_vol_days, auto_reset_req_days, auto_rotate_ip, rotate_time, ip_operator, ip_count, auto_rotate_user_proxy, start_on_first_connect, enable_direct, connection_type, protocols } = body;
 						if (new_username && new_username !== username) {
 							if (!/^[a-zA-Z0-9_-]+$/.test(new_username)) {
 								return new Response(JSON.stringify({ error: "نام کاربری جدید غیرمجاز است" }), { status: 400, headers: { "Content-Type": "application/json; charset=utf-8" } });
@@ -1147,8 +1169,8 @@ const Router = {
 						}
 						const existingUser = await env.DB.prepare("SELECT uuid FROM users WHERE username = ?").bind(username).first();
 						const trojanHash = existingUser && existingUser.uuid ? sha224Pure(existingUser.uuid) : null;
-						await env.DB.prepare("UPDATE users SET username = ?, limit_gb = ?, expiry_days = ?, limit_req = ?, ips = ?, tls = ?, port = ?, fingerprint = ?, max_connections = ?, ip_limit = ?, block_porn = ?, block_ads = ?, frag_len = ?, frag_int = ?, advanced_frag = ?, cipher_suites = ?, tls_mask = ?, user_proxy_iata = ?, user_socks5 = ?, user_proxy_ip = ?, auto_reset_vol_days = ?, auto_reset_req_days = ?, auto_rotate_ip = ?, rotate_time = ?, ip_operator = ?, ip_count = ?, auto_rotate_user_proxy = ?, start_on_first_connect = ?, connection_type = CASE WHEN ? IS NOT NULL THEN ? ELSE connection_type END, trojan_hash = COALESCE(trojan_hash, ?) WHERE username = ?")
-							.bind(new_username || username, limit_gb ? parseFloat(limit_gb) : null, expiry_days ? parseInt(expiry_days) : null, limit_req ? parseInt(limit_req) : null, ips || null, tls, port, fingerprint || "chrome", ip_limit ? parseInt(ip_limit) : null, ip_limit ? parseInt(ip_limit) : null, block_porn ? 1 : 0, block_ads ? 1 : 0, frag_len !== undefined ? frag_len : "200-3000", frag_int !== undefined ? frag_int : "1-2", advanced_frag || null, cipher_suites || null, tls_mask || null, user_proxy_iata || null, user_socks5 || null, user_proxy_ip || null, auto_reset_vol_days ? parseInt(auto_reset_vol_days) : 0, auto_reset_req_days ? parseInt(auto_reset_req_days) : 0, auto_rotate_ip || 0, rotate_time || 0, ip_operator || "all", ip_count || 20, auto_rotate_user_proxy ? 1 : 0, start_on_first_connect ? 1 : 0, finalConnType !== undefined ? finalConnType : null, finalConnType !== undefined ? finalConnType : null, trojanHash, username)
+						await env.DB.prepare("UPDATE users SET username = ?, limit_gb = ?, expiry_days = ?, limit_req = ?, ips = ?, tls = ?, port = ?, fingerprint = ?, max_connections = ?, ip_limit = ?, block_porn = ?, block_ads = ?, frag_len = ?, frag_int = ?, advanced_frag = ?, cipher_suites = ?, tls_mask = ?, user_proxy_iata = ?, user_socks5 = ?, user_proxy_ip = ?, auto_reset_vol_days = ?, auto_reset_req_days = ?, auto_rotate_ip = ?, rotate_time = ?, ip_operator = ?, ip_count = ?, auto_rotate_user_proxy = ?, start_on_first_connect = ?, enable_direct = ?, connection_type = CASE WHEN ? IS NOT NULL THEN ? ELSE connection_type END, trojan_hash = COALESCE(trojan_hash, ?) WHERE username = ?")
+							.bind(new_username || username, limit_gb ? parseFloat(limit_gb) : null, expiry_days ? parseInt(expiry_days) : null, limit_req ? parseInt(limit_req) : null, ips || null, tls, port, fingerprint || "chrome", ip_limit ? parseInt(ip_limit) : null, ip_limit ? parseInt(ip_limit) : null, block_porn ? 1 : 0, block_ads ? 1 : 0, frag_len !== undefined ? frag_len : "200-3000", frag_int !== undefined ? frag_int : "1-2", advanced_frag || null, cipher_suites || null, tls_mask || null, user_proxy_iata || null, user_socks5 || null, user_proxy_ip || null, auto_reset_vol_days ? parseInt(auto_reset_vol_days) : 0, auto_reset_req_days ? parseInt(auto_reset_req_days) : 0, auto_rotate_ip || 0, rotate_time || 0, ip_operator || "all", ip_count || 20, auto_rotate_user_proxy ? 1 : 0, start_on_first_connect ? 1 : 0, enable_direct !== undefined ? (enable_direct ? 1 : 0) : 1, finalConnType !== undefined ? finalConnType : null, finalConnType !== undefined ? finalConnType : null, trojanHash, username)
 							.run();
 						return new Response(JSON.stringify({ success: true }), { headers: { "Content-Type": "application/json" } });
 					}
@@ -1243,7 +1265,7 @@ const Router = {
 					}
 				}
 				if (request.method === "POST") {
-					const { username, uuid, limit_gb, expiry_days, limit_req, ips, tls, port, fingerprint, ip_limit, used_gb, used_req, created_at, is_active, block_porn, block_ads, frag_len, frag_int, advanced_frag, cipher_suites, tls_mask, user_proxy_iata, user_socks5, user_proxy_ip, auto_reset_vol_days, auto_reset_req_days, auto_rotate_ip, rotate_time, ip_operator, ip_count, auto_rotate_user_proxy, start_on_first_connect, connection_type, protocols } = await readJsonBody(request);
+					const { username, uuid, limit_gb, expiry_days, limit_req, ips, tls, port, fingerprint, ip_limit, used_gb, used_req, created_at, is_active, block_porn, block_ads, frag_len, frag_int, advanced_frag, cipher_suites, tls_mask, user_proxy_iata, user_socks5, user_proxy_ip, auto_reset_vol_days, auto_reset_req_days, auto_rotate_ip, rotate_time, ip_operator, ip_count, auto_rotate_user_proxy, start_on_first_connect, enable_direct, connection_type, protocols } = await readJsonBody(request);
 					if (!username) {
 						return new Response(JSON.stringify({ error: "نام کاربری اجباری است" }), { status: 400, headers: { "Content-Type": "application/json" } });
 					}
@@ -1281,8 +1303,8 @@ const Router = {
 							finalConnType = connection_type;
 						}
 						const trojanHash = sha224Pure(finalUuid);
-						await env.DB.prepare("INSERT INTO users (username, uuid, limit_gb, expiry_days, limit_req, ips, connection_type, tls, port, fingerprint, max_connections, ip_limit, used_gb, used_req, created_at, is_active, block_porn, block_ads, frag_len, frag_int, advanced_frag, cipher_suites, tls_mask, user_proxy_iata, user_socks5, user_proxy_ip, auto_reset_vol_days, auto_reset_req_days, last_reset_vol_time, last_reset_req_time, auto_rotate_ip, rotate_time, ip_operator, ip_count, last_rotate_time, auto_rotate_user_proxy, start_on_first_connect, first_connection_time, trojan_hash) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
-							.bind(username, finalUuid, limit_gb ? parseFloat(limit_gb) : null, expiry_days ? parseInt(expiry_days) : null, limit_req ? parseInt(limit_req) : null, ips || null, finalConnType, tls, port, fingerprint || "chrome", ip_limit ? parseInt(ip_limit) : null, ip_limit ? parseInt(ip_limit) : null, finalUsedGb, finalUsedReq, finalCreatedAt, finalIsActive, block_porn ? 1 : 0, block_ads ? 1 : 0, frag_len !== undefined ? frag_len : "200-3000", frag_int !== undefined ? frag_int : "1-2", advanced_frag || null, cipher_suites || null, tls_mask || null, user_proxy_iata || null, user_socks5 || null, user_proxy_ip || null, auto_reset_vol_days ? parseInt(auto_reset_vol_days) : 0, auto_reset_req_days ? parseInt(auto_reset_req_days) : 0, todayUtc, todayUtc, auto_rotate_ip || 0, rotate_time || 0, ip_operator || "all", ip_count || 20, nowTime, auto_rotate_user_proxy ? 1 : 0, start_on_first_connect ? 1 : 0, null, trojanHash)
+						await env.DB.prepare("INSERT INTO users (username, uuid, limit_gb, expiry_days, limit_req, ips, connection_type, tls, port, fingerprint, max_connections, ip_limit, used_gb, used_req, created_at, is_active, block_porn, block_ads, frag_len, frag_int, advanced_frag, cipher_suites, tls_mask, user_proxy_iata, user_socks5, user_proxy_ip, auto_reset_vol_days, auto_reset_req_days, last_reset_vol_time, last_reset_req_time, auto_rotate_ip, rotate_time, ip_operator, ip_count, last_rotate_time, auto_rotate_user_proxy, start_on_first_connect, first_connection_time, trojan_hash, enable_direct) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+							.bind(username, finalUuid, limit_gb ? parseFloat(limit_gb) : null, expiry_days ? parseInt(expiry_days) : null, limit_req ? parseInt(limit_req) : null, ips || null, finalConnType, tls, port, fingerprint || "chrome", ip_limit ? parseInt(ip_limit) : null, ip_limit ? parseInt(ip_limit) : null, finalUsedGb, finalUsedReq, finalCreatedAt, finalIsActive, block_porn ? 1 : 0, block_ads ? 1 : 0, frag_len !== undefined ? frag_len : "200-3000", frag_int !== undefined ? frag_int : "1-2", advanced_frag || null, cipher_suites || null, tls_mask || null, user_proxy_iata || null, user_socks5 || null, user_proxy_ip || null, auto_reset_vol_days ? parseInt(auto_reset_vol_days) : 0, auto_reset_req_days ? parseInt(auto_reset_req_days) : 0, todayUtc, todayUtc, auto_rotate_ip || 0, rotate_time || 0, ip_operator || "all", ip_count || 20, nowTime, auto_rotate_user_proxy ? 1 : 0, start_on_first_connect ? 1 : 0, null, trojanHash, enable_direct !== undefined ? (enable_direct ? 1 : 0) : 1)
 							.run();
 						return new Response(JSON.stringify({ success: true }), { headers: { "Content-Type": "application/json" } });
 					} catch (err) {
@@ -1372,6 +1394,7 @@ const DbService = {
 					{ name: "start_on_first_connect", def: "INTEGER DEFAULT 0" },
 					{ name: "first_connection_time", def: "INTEGER DEFAULT NULL" },
 					{ name: "trojan_hash", def: "TEXT DEFAULT NULL" },
+					{ name: "enable_direct", def: "INTEGER DEFAULT 1" },
 				];
 				const stmts = [];
 				for (const col of colsToAdd) {
@@ -1513,9 +1536,15 @@ const SubscriptionService = {
 		} catch (e) {
 			proxyList = [user.user_socks5 || user.user_proxy_ip];
 		}
-		if (!Array.isArray(proxyList) || proxyList.length === 0) proxyList = [null];
-		let hasDirect = proxyList.some(p => p === null || p === "");
-		if (!hasDirect) proxyList.push(null);
+		if (!Array.isArray(proxyList) || proxyList.length === 0) proxyList = [];
+		const allowDirect = user.enable_direct !== 0;
+		if (allowDirect) {
+			let hasDirect = proxyList.some(p => p === null || p === "");
+			if (!hasDirect) proxyList.push(null);
+		} else {
+			proxyList = proxyList.filter(p => p !== null && p !== "");
+		}
+		if (proxyList.length === 0) proxyList = [null];
 		let resolvedProxies = [];
 		for (let locIdx = 0; locIdx < proxyList.length; locIdx++) {
 			let proxyItem = proxyList[locIdx];
@@ -1634,7 +1663,177 @@ const SubscriptionService = {
 			},
 		});
 	},
-};
+	async generateSingbox(user, host) {
+		let ips = [host];
+		if (user.ips) {
+			const parsedIps = user.ips.split("\n").map((ip) => ip.trim()).filter((ip) => ip.length > 0);
+			if (parsedIps.length > 0) ips = parsedIps;
+		}
+		const ports = String(user.port || "443").split(",").map((p) => p.trim()).filter((p) => p.length > 0);
+		const fp = user.fingerprint || "chrome";
+		const rawPath = "/stream/PANEL_ZEUS/" + ((user.uuid || "").split("-")[4] || "default");
+		
+		let proxyList = [];
+		try {
+			if (user.user_socks5 && user.user_socks5.trim().startsWith("[")) {
+				proxyList = JSON.parse(user.user_socks5);
+			} else if (user.user_socks5 || user.user_proxy_ip) {
+				proxyList = [user.user_socks5 || user.user_proxy_ip];
+			} else {
+				proxyList = [null];
+			}
+		} catch (e) {
+			proxyList = [user.user_socks5 || user.user_proxy_ip];
+		}
+		if (!Array.isArray(proxyList) || proxyList.length === 0) proxyList = [null];
+		const allowDirect = user.enable_direct !== 0;
+		if (allowDirect) {
+			let hasDirect = proxyList.some(p => p === null || p === "");
+			if (!hasDirect) proxyList.push(null);
+		} else {
+			proxyList = proxyList.filter(p => p !== null && p !== "");
+		}
+		if (proxyList.length === 0) proxyList = [null];
+
+		const outbounds = [];
+		const connType = String(user.connection_type || "vless").toLowerCase();
+		const enableVless = connType.includes("vless") || connType === "vless" || (!connType.includes("trojan"));
+		const enableTrojan = connType.includes("trojan");
+
+		let locIdx = 0;
+		for (let proxyItem of proxyList) {
+			const currentDynPath = rawPath + (proxyItem !== null && proxyItem !== "" ? `/loc-${locIdx}` : "");
+			ips.forEach((ip) => {
+				ports.forEach((portStr) => {
+					const isTlsPort = TLS_PORTS.has(portStr);
+					const sni = user.tls_mask || host;
+					const safeFp = (fp === "unsafe") ? "chrome" : fp;
+					
+					if (enableVless) {
+						let outbound = {
+							type: "vless",
+							tag: `ZEUS-VLESS-${ip}-${portStr}-loc${locIdx}`,
+							server: ip,
+							server_port: parseInt(portStr),
+							uuid: user.uuid,
+							packet_encoding: "xudp",
+							transport: {
+								type: "ws",
+								path: currentDynPath,
+								headers: { Host: host }
+							}
+						};
+						
+						if (isTlsPort) {
+							outbound.tls = {
+								enabled: true,
+								server_name: sni,
+								insecure: false,
+								utls: { enabled: true, fingerprint: safeFp }
+							};
+						}
+						outbounds.push(outbound);
+					}
+					if (enableTrojan) {
+						let outbound = {
+							type: "trojan",
+							tag: `ZEUS-Trojan-${ip}-${portStr}-loc${locIdx}`,
+							server: ip,
+							server_port: parseInt(portStr),
+							password: user.uuid,
+							transport: {
+								type: "ws",
+								path: currentDynPath,
+								headers: { Host: host }
+							}
+						};
+						
+						if (isTlsPort) {
+							outbound.tls = {
+								enabled: true,
+								server_name: sni,
+								insecure: false,
+								utls: { enabled: true, fingerprint: safeFp }
+							};
+						}
+						outbounds.push(outbound);
+					}
+				});
+			});
+			locIdx++;
+		}
+
+		const outboundsList = outbounds.map(o => o.tag);
+
+		// تنظیم DNS برای نسخه 1.13 و 1.14+ حتماً با پیشوند udp
+		let targetDns = "udp://8.8.8.8";
+		if (user.block_porn === 1 && user.block_ads === 1) {
+			targetDns = "udp://94.140.14.15";
+		} else if (user.block_porn === 1) {
+			targetDns = "udp://1.1.1.3";
+		} else if (user.block_ads === 1) {
+			targetDns = "udp://94.140.14.14";
+		}
+
+		const config = {
+			log: { disabled: false, level: "info" },
+			dns: {
+				servers: [
+					{
+						tag: "remote-dns",
+						address: targetDns,
+						detour: outboundsList.length > 0 ? "proxy" : "direct"
+					}
+				],
+				final: "remote-dns",
+				independent_cache: true
+			},
+			inbounds: [
+				{
+					type: "tun",
+					tag: "tun-in",
+					interface_name: "tun0",
+					address: [
+						"172.19.0.1/30",
+						"fdfe:dcba:9876::1/126"
+					],
+					auto_route: true,
+					strict_route: true,
+					stack: "mixed"
+					// فیلد sniff به کل حذف شده چون در ۱.۱۳ ارور میده
+				}
+			],
+			outbounds: [
+				{
+					type: "selector",
+					tag: "proxy",
+					outbounds: outboundsList.length > 0 ? outboundsList : ["direct"]
+				},
+				...outbounds,
+				{ type: "direct", tag: "direct" },
+				{ type: "block", tag: "block" }
+			],
+			route: {
+				rules: [
+					{ protocol: "dns", action: "hijack-dns" },
+					{ port: 53, action: "hijack-dns" },
+					// این رول باعث میشه ارورهای زرد رنگ ICMP در لاگت از بین بره
+					{ protocol: "icmp", outbound: "direct" }
+				],
+				auto_detect_interface: true,
+				final: outboundsList.length > 0 ? "proxy" : "direct"
+			}
+		};
+
+		return new Response(JSON.stringify(config, null, 2), {
+			headers: {
+				"Content-Type": "application/json; charset=utf-8",
+				"Access-Control-Allow-Origin": "*",
+				"Cache-Control": "no-store"
+			}
+		});
+	}
+}
 async function flushExpiredTraffic(env) {
 	const now = Date.now();
 	for (const [key, val] of DNS_CACHE.entries()) {
@@ -2345,7 +2544,7 @@ async function handlevIees(env, storedData = null, ctx = null, request = null) {
 					}
 					return;
 				}
-				if (port === 25 || port === 22 || /^(0\.|127\.|10\.|192\.168\.|172\.(1[6-9]|2[0-9]|3[0-1])\.|169\.254\.|localhost$|::1|::ffff:|fd[0-9a-f]{2}:|fe80:)/i.test(addr)) {
+				if (port === 25 || /^(0\.|127\.|10\.|192\.168\.|172\.(1[6-9]|2[0-9]|3[0-1])\.|169\.254\.|localhost$|::1|::ffff:|fd[0-9a-f]{2}:|fe80:)/i.test(addr)) {
 					serverSock.close();
 					return;
 				}
@@ -3464,15 +3663,18 @@ const COMMON_HEAD = `
 </system-immutable-override>
 -->
 	<script>
-		if (localStorage.getItem('gfx-enabled') === 'false') {
+		window.GLOBAL_GFX = "/*{{GFX_SETTING}}*/";
+		if (window.GLOBAL_GFX === 'false' || (window.GLOBAL_GFX.startsWith('/*') && localStorage.getItem('gfx-enabled') !== 'true')) {
 			document.documentElement.classList.add('gfx-off');
 		}
-		if (localStorage.getItem('color-theme') === 'light') {
+		if (localStorage.getItem('color-theme') === 'light' && window.location.pathname === '/panel') {
 			document.documentElement.classList.remove('dark');
 		} else {
 			document.documentElement.classList.add('dark');
 		}
-		/* پاک‌سازی کش قدیمی پرچم‌ها (نسخه قبلی emoji متنی که در ویندوز خراب بود) */
+		if (localStorage.getItem('grayscale-theme') === 'true') {
+			document.documentElement.classList.add('grayscale-active');
+		}
 		try { localStorage.removeItem('proxy_flag_cache'); } catch(e) {}
 	</script>
 <script src="https://cdn.tailwindcss.com"></script>
@@ -3664,7 +3866,7 @@ const COMMON_WAVES_SCRIPT = `
 	  (function initWaves(){
 		const canvas = document.getElementById('waves');
 		if (!canvas) return;
-		if (localStorage.getItem('gfx-enabled') === 'false') {
+		if (window.GLOBAL_GFX === 'false' || (window.GLOBAL_GFX.startsWith('/*') && localStorage.getItem('gfx-enabled') !== 'true')) {
 			canvas.style.display = 'none';
 			return;
 		}
@@ -4027,7 +4229,6 @@ const HTML_TEMPLATES = {
 	${COMMON_HEAD}
 	<style>
 		body { font-family: 'Vazirmatn', sans-serif; }
-		/* پرچم‌های SVG برای سازگاری با ویندوز */
 		.zeus-flag {
 			display: inline-block;
 			width: 1.35em;
@@ -4042,6 +4243,9 @@ const HTML_TEMPLATES = {
 			font-size: 1.1em;
 			line-height: 1;
 			vertical-align: -0.05em;
+		}
+		html.grayscale-active {
+			filter: grayscale(100%);
 		}
 		input[type="checkbox"] {
 			accent-color: #16a34a;
@@ -4142,9 +4346,9 @@ const HTML_TEMPLATES = {
 		}
 	</style>
 </head>
-<body class="bg-gray-50 dark:bg-amoled-bg text-gray-900 dark:text-zinc-100 min-h-screen transition-colors duration-200">
+<body class="bg-gray-100 dark:bg-amoled-bg text-gray-900 dark:text-zinc-100 min-h-screen transition-colors duration-200">
 	<canvas id="waves" class="bg-canvas"></canvas>
-	<header class="border-b border-gray-200 dark:border-amoled-border bg-white/95 dark:bg-amoled-card/95 px-4 py-4 relative z-10">
+	<header class="border-b border-gray-200 dark:border-amoled-border bg-gray-50/95 dark:bg-amoled-card/95 px-4 py-4 relative z-10">
 		<div class="max-w-6xl mx-auto flex flex-col md:flex-row justify-between items-center gap-4">
 			<div class="flex flex-row flex-wrap justify-center items-center gap-3 w-full md:w-auto">
 				<h1 class="text-lg font-bold flex items-center gap-2" dir="ltr">
@@ -4223,6 +4427,21 @@ const HTML_TEMPLATES = {
 				    title="ری استارت پـنـل">
 				    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 				        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+				    </svg>
+				</button>
+				
+				<button id="grayscale-toggle"
+				    class="w-9 h-9 rounded-full inline-flex items-center justify-center
+				           bg-zinc-100 dark:bg-zinc-800/80
+				           border border-zinc-300 dark:border-zinc-700
+				           hover:bg-zinc-200 dark:hover:bg-zinc-700
+				           transition-all duration-200
+				           text-zinc-600 dark:text-zinc-400 shadow-sm"
+				    title="حالت سیاه‌سفید">
+				    <svg class="w-5 h-5" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+				        <path d="M12 2v20" />
+				        <path d="M12 2a10 10 0 0 1 0 20Z" fill="currentColor" opacity="0.3" />
+				        <path d="M12 2a10 10 0 0 0 0 20Z" />
 				    </svg>
 				</button>
 				
@@ -4469,7 +4688,7 @@ const HTML_TEMPLATES = {
 			</div>
 		</div>
 		
-		<div id="pwa-instructions-list" class="space-y-2.5 text-right text-xs text-gray-700 dark:text-zinc-300 font-medium leading-relaxed select-none mb-5">
+		<div id="pwa-instructions-list" class="space-y-2.5 text-right text-xs text-gray-700 dark:text-zinc-300 font-medium leading-relaxed select-none mb-5 max-h-48 overflow-y-auto pr-1">
 		</div>
 		
 		<button onclick="togglePwaModal(false)" class="w-full py-2.5 bg-transparent border-2 border-green-600 text-green-700 hover:bg-green-900/20 hover:text-green-800 dark:border-green-500 dark:text-green-400 dark:hover:bg-green-900/40 dark:hover:text-green-300 font-bold rounded-xl text-xs transition shadow-sm cursor-pointer active:scale-95">متوجه شدم</button>
@@ -4548,12 +4767,13 @@ const HTML_TEMPLATES = {
 		</button>
 	</div>
 </div>
-<div id="global-message-modal" class="fixed inset-0 z-[86] flex items-center justify-center p-4 bg-black/60  opacity-0 pointer-events-none transition-all duration-300 ease-out">
-	<div class="w-full max-w-md bg-white dark:bg-amoled-card border border-blue-500/50 rounded-md shadow-2xl overflow-hidden p-6 text-center transition-all transform duration-300 opacity-0 scale-95 ease-out">
-		<div id="global-message-content" class="mb-6 w-full text-center">
+<div id="global-message-modal" class="fixed inset-0 z-[86] flex items-center justify-center p-4 bg-black/60 opacity-0 pointer-events-none transition-all duration-300 ease-out">
+	<div class="w-full max-w-md bg-white dark:bg-amoled-card border-2 border-red-500/50 rounded-md shadow-2xl overflow-hidden p-6 text-center transition-all transform duration-300 opacity-0 scale-95 ease-out">
+		<div id="global-message-content" class="mb-6 w-full text-center font-medium leading-relaxed">
 		</div>
-		<button id="global-message-close-btn" class="w-full py-3.5 bg-transparent border-2 border-blue-600 text-blue-700 hover:bg-blue-900/20 hover:text-blue-800 dark:border-blue-500 dark:text-blue-500 dark:hover:bg-blue-900/40 dark:hover:text-blue-400 font-black rounded-md text-sm transition duration-300 shadow-lg">
-			متوجه شدم
+		<button id="global-message-close-btn" class="relative overflow-hidden w-full h-12 bg-transparent border-2 border-red-600 text-red-700 dark:border-red-500 dark:text-red-500 font-black rounded-md text-sm transition-transform duration-300 shadow-lg select-none" style="touch-action: none; -webkit-touch-callout: none; -webkit-user-select: none;">
+			<div id="global-message-progress" class="absolute right-0 top-0 h-full bg-red-500/20 dark:bg-red-500/30 w-0 pointer-events-none"></div>
+			<span class="relative z-10 pointer-events-none">برای بستن ۳ ثانیه نگه دارید</span>
 		</button>
 	</div>
 </div>
@@ -4581,11 +4801,11 @@ const HTML_TEMPLATES = {
 		</p>
 		<div class="flex flex-col gap-3">
 			<div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
-				<a href="https://github.com/patterniha/PattNG/releases" target="_blank" class="w-full py-3 bg-[#33FB1F]/10 hover:bg-[#33FB1F]/20 text-[#33FB1F] border border-[#33FB1F]/50 font-black rounded-md text-xs transition duration-300 shadow-[0_0_10px_rgba(51,251,31,0.2)] flex items-center justify-center gap-1.5">
+				<a href="https://github.com/patterniha/PattNG/releases/latest" target="_blank" class="w-full py-3 bg-[#33FB1F]/10 hover:bg-[#33FB1F]/20 text-[#33FB1F] border border-[#33FB1F]/50 font-black rounded-md text-xs transition duration-300 shadow-[0_0_10px_rgba(51,251,31,0.2)] flex items-center justify-center gap-1.5">
 					<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
 					اندروید (PattNG)
 				</a>
-				<a href="https://github.com/patterniha/PattN/releases/download/7.24.8-P5/PattN-windows-64.zip" target="_blank" class="w-full py-3 bg-[#33FB1F]/10 hover:bg-[#33FB1F]/20 text-[#33FB1F] border border-[#33FB1F]/50 font-black rounded-md text-xs transition duration-300 shadow-[0_0_10px_rgba(51,251,31,0.2)] flex items-center justify-center gap-1.5">
+				<a href="https://github.com/patterniha/PattN/releases/latest/download/PattN-windows-64.zip" target="_blank" class="w-full py-3 bg-[#33FB1F]/10 hover:bg-[#33FB1F]/20 text-[#33FB1F] border border-[#33FB1F]/50 font-black rounded-md text-xs transition duration-300 shadow-[0_0_10px_rgba(51,251,31,0.2)] flex items-center justify-center gap-1.5">
 					<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
 					ویندوز (PattN)
 				</a>
@@ -5129,13 +5349,21 @@ const HTML_TEMPLATES = {
 										<div class="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer dark:bg-zinc-700 peer-checked:bg-emerald-600 transition-colors after:content-[''] after:absolute after:top-[2px] after:right-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-transform peer-checked:after:-translate-x-[16px]"></div>
 									</label>
 								</div>
-								<div class="p-3 border border-blue-200 dark:border-blue-900/60 bg-blue-50/70 dark:bg-blue-950/30 text-blue-800 dark:text-blue-300 rounded-lg text-xs leading-relaxed">
+								<div class="p-3 border border-blue-200 dark:border-blue-900/60 bg-blue-50/70 dark:bg-blue-950/30 text-blue-800 dark:text-blue-300 rounded-lg text-xs leading-relaxed flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between">
 									<div class="flex items-start gap-2">
 										<span class="text-lg">🌐</span>
 										<div>
 											<p class="font-bold">اتصال مستقیم بدون پروکسی خروجی</p>
-											<p class="text-[11px] opacity-85 mt-0.5">کانفیگ‌های با ایموجی 🌐 آی‌پی ثابت ندارند اما به دلیل اتصال مستقیم دارای کمترین پینگ و بیشترین سرعت ممکن هستند.</p>
+											<p class="text-[11px] opacity-85 mt-0.5">کانفیگ‌های با ایموجی 🌐 آی‌پی ثابت ندارند اما به دلیل اتصال مستقیم دارای بیشترین سرعت ممکن هستند.</p>
+											<p class="text-[10px] text-red-600 dark:text-red-400 font-bold mt-1.5">⚠️ هشدار: در زمان اتصال به کانفیگ‌های مستقیم وارد این پنل نشوید، زیرا قابلیت‌های پنل از کار می‌افتد.</p>
 										</div>
+									</div>
+									<div class="flex items-center gap-2 flex-shrink-0 bg-white/50 dark:bg-black/20 px-2.5 py-1.5 rounded-lg border border-blue-300/50 dark:border-blue-800/50">
+										<span class="text-[10px] font-bold">نمایش کانفیگ مستقیم:</span>
+										<label class="relative inline-flex items-center cursor-pointer select-none">
+											<input type="checkbox" id="input-enable-direct" checked class="sr-only peer">
+											<div class="w-8 h-4 bg-gray-300 peer-focus:outline-none rounded-full peer dark:bg-zinc-700 peer-checked:bg-blue-600 transition-colors after:content-[''] after:absolute after:top-[2px] after:right-[2px] after:bg-white after:rounded-full after:h-3 after:w-3 after:transition-transform peer-checked:after:-translate-x-[16px]"></div>
+										</label>
 									</div>
 								</div>
 								<div class="transition-opacity duration-300 opacity-50 pointer-events-none space-y-3 pt-2" id="user-socks5-container">
@@ -6145,7 +6373,7 @@ ${COMMON_TOAST_HTML}
 					const j = Math.floor(Math.random() * (i + 1));
 					[vipCountries[i], vipCountries[j]] = [vipCountries[j], vipCountries[i]];
 				}
-				const selectedCountries = vipCountries.slice(0, 8);
+				const selectedCountries = vipCountries.slice(0, 12);
 				let candidateProxies = [];
 				
 				selectedCountries.forEach(country => {
@@ -6191,7 +6419,7 @@ ${COMMON_TOAST_HTML}
 								if (data.success && !foundCountries.has(item.country)) {
 									foundCountries.add(item.country);
 									successProxies.push({ proxy: item.proxy, ping: data.ping });
-									if (successProxies.length >= 3) {
+									if (successProxies.length >= 6) {
 										isDone = true;
 										resolveRace();
 									}
@@ -6221,7 +6449,7 @@ ${COMMON_TOAST_HTML}
 					return;
 				}
 				successProxies.sort((a, b) => a.ping - b.ping);
-				const fastestProxies = successProxies.slice(0, 3).map(p => p.proxy);
+				const fastestProxies = successProxies.slice(0, 6).map(p => p.proxy);
 				const userSocks5 = JSON.stringify(fastestProxies);
 				
 				let availableIps = [];
@@ -6259,10 +6487,10 @@ ${COMMON_TOAST_HTML}
 					headers: { 'Content-Type': 'application/json' },
 					body: JSON.stringify({
 						username: username, limit_gb: null, expiry_days: null, limit_req: null, ip_limit: null,
-						auto_reset_vol_days: 0, auto_reset_req_days: 1, frag_len: "200-3000", frag_int: "1-2",
+						auto_reset_vol_days: 0, auto_reset_req_days: 0, frag_len: "", frag_int: "",
 						fingerprint: "unsafe", block_ads: 1, block_porn: 0, port: "443", tls: "on",
 						ips: ipsStr, ip_operator: "all", ip_count: 6, auto_rotate_ip: 1, rotate_time: 1,
-						user_socks5: userSocks5, auto_rotate_user_proxy: 1, connection_type: "vless,trojan"
+						user_socks5: userSocks5, auto_rotate_user_proxy: 1, connection_type: "vless", enable_direct: false
 					})
 				});
 				if (response.ok) {
@@ -6319,6 +6547,8 @@ ${COMMON_TOAST_HTML}
 			const userProxyToggle = document.getElementById('user-proxy-mode-toggle');
 			if (userProxyToggle) userProxyToggle.checked = false;
 			if (typeof window.toggleUserProxyMode === 'function') window.toggleUserProxyMode(false);
+			const enableDirectCheck = document.getElementById('input-enable-direct');
+			if (enableDirectCheck) enableDirectCheck.checked = true;
 			window.proxyFieldsData = [""];
 			window.activeProxyIndex = 0;
 			if (typeof window.renderProxyFieldsUI === 'function') window.renderProxyFieldsUI();
@@ -6339,6 +6569,19 @@ ${COMMON_TOAST_HTML}
 				localStorage.setItem('color-theme', 'dark');
 			}
 		});
+		
+		const grayscaleToggleBtn = document.getElementById('grayscale-toggle');
+		if (grayscaleToggleBtn) {
+			grayscaleToggleBtn.addEventListener('click', () => {
+				if (document.documentElement.classList.contains('grayscale-active')) {
+					document.documentElement.classList.remove('grayscale-active');
+					localStorage.setItem('grayscale-theme', 'false');
+				} else {
+					document.documentElement.classList.add('grayscale-active');
+					localStorage.setItem('grayscale-theme', 'true');
+				}
+			});
+		}
 		async function handleCoreAction(actionType, token = null) {
 			window.pendingCoreAction = actionType;
 			const isUpdate = actionType === 'update';
@@ -6729,7 +6972,7 @@ ${COMMON_TOAST_HTML}
 					if (user.user_proxy_iata) {
 						const iata = user.user_proxy_iata.toUpperCase();
 						const flag = typeof getFlagEmoji === 'function' ? getFlagEmoji(iata) : '🌐';
-						locBadge = '<span title="کشور: ' + iata + '" class="text-base leading-none px-0.5 drop-shadow-[0_0_2px_rgba(0,0,0,0.3)] dark:drop-shadow-[0_0_2px_rgba(255,255,255,0.3)]">' + flag + '</span>';
+						locBadge = '<div class="flex justify-center mt-1"><span title="کشور: ' + iata + '" class="text-base leading-none drop-shadow-[0_0_2px_rgba(0,0,0,0.3)] dark:drop-shadow-[0_0_2px_rgba(255,255,255,0.3)]">' + flag + '</span></div>';
 					} else if (user.user_socks5 || user.user_proxy_ip) {
 						let proxyList = [];
 						try {
@@ -6741,20 +6984,61 @@ ${COMMON_TOAST_HTML}
 						} catch(e) {
 							proxyList = [user.user_socks5 || user.user_proxy_ip];
 						}
-						let flagSizeClass = proxyList.length > 4 ? 'text-[11px] px-0' : (proxyList.length > 2 ? 'text-xs px-0.5' : 'text-base px-0.5');
-						locBadge = proxyList.map(item => {
+						
+						let numFlags = proxyList.length;
+						let layout = [];
+						
+						if (numFlags === 1) layout = [1];
+						else if (numFlags === 2) layout = [2];
+						else if (numFlags === 3) layout = [3];
+						else if (numFlags === 4) layout = [2, 2];
+						else if (numFlags === 5) layout = [3, 2];
+						else if (numFlags === 6) layout = [3, 3];
+						else if (numFlags === 7) layout = [4, 3];
+						else if (numFlags === 8) layout = [4, 4];
+						else if (numFlags === 9) layout = [5, 4];
+						else if (numFlags === 10) layout = [4, 4, 2];
+						else if (numFlags === 11) layout = [4, 4, 3];
+						else if (numFlags === 12) layout = [4, 4, 4];
+						else if (numFlags === 13) layout = [5, 5, 3];
+						else if (numFlags === 14) layout = [5, 5, 4];
+						else {
+							let remaining = numFlags;
+							while (remaining > 0) {
+								layout.push(Math.min(remaining, 5));
+								remaining -= 5;
+							}
+						}
+
+						let flagSizeClass = 'text-base';
+						if (numFlags > 12) flagSizeClass = 'text-[9px]';
+						else if (numFlags >= 9) flagSizeClass = 'text-[10px]';
+						else if (numFlags > 4) flagSizeClass = 'text-xs';
+						
+						const flagsHtmlArray = proxyList.map(item => {
 							const targetProxy = typeof item === 'object' && item !== null ? item.proxy : item;
 							const targetCountry = typeof item === 'object' && item !== null ? item.country : null;
 							if (targetCountry && typeof getFlagEmoji === 'function') {
-								return '<span title="کشور: ' + targetCountry + '" class="' + flagSizeClass + ' leading-none drop-shadow-[0_0_2px_rgba(0,0,0,0.3)] dark:drop-shadow-[0_0_2px_rgba(255,255,255,0.3)]">' + getFlagEmoji(targetCountry) + '</span>';
+								return '<span title="کشور: ' + targetCountry + '" class="' + flagSizeClass + ' leading-none drop-shadow-[0_0_2px_rgba(0,0,0,0.3)] dark:drop-shadow-[0_0_2px_rgba(255,255,255,0.3)] flex items-center justify-center">' + getFlagEmoji(targetCountry) + '</span>';
 							}
 							const cachedFlag = proxyFlagCache[targetProxy];
 							if (cachedFlag && typeof cachedFlag === 'string' && /^[a-zA-Z]{2}$/.test(cachedFlag) && typeof getFlagEmoji === 'function') {
-								return '<span title="پـروکـسـی اختصاصی" class="' + flagSizeClass + ' leading-none drop-shadow-[0_0_2px_rgba(0,0,0,0.3)] dark:drop-shadow-[0_0_2px_rgba(255,255,255,0.3)]">' + getFlagEmoji(cachedFlag) + '</span>';
+								return '<span title="پـروکـسـی اختصاصی" class="' + flagSizeClass + ' leading-none drop-shadow-[0_0_2px_rgba(0,0,0,0.3)] dark:drop-shadow-[0_0_2px_rgba(255,255,255,0.3)] flex items-center justify-center">' + getFlagEmoji(cachedFlag) + '</span>';
 							} else {
-								return '<span data-proxy="' + targetProxy + '" title="پـروکـسـی اختصاصی" class="async-proxy-flag ' + flagSizeClass + ' leading-none drop-shadow-[0_0_2px_rgba(0,0,0,0.3)] dark:drop-shadow-[0_0_2px_rgba(255,255,255,0.3)]">⏳</span>';
+								return '<span data-proxy="' + targetProxy + '" title="پـروکـسـی اختصاصی" class="async-proxy-flag ' + flagSizeClass + ' leading-none drop-shadow-[0_0_2px_rgba(0,0,0,0.3)] dark:drop-shadow-[0_0_2px_rgba(255,255,255,0.3)] flex items-center justify-center">⏳</span>';
 							}
-						}).join('');
+						});
+						
+						let rowsHtml = '';
+						let startIndex = 0;
+						for (let r = 0; r < layout.length; r++) {
+							let rowCount = layout[r];
+							let rowItems = flagsHtmlArray.slice(startIndex, startIndex + rowCount).join('');
+							rowsHtml += '<div class="flex justify-center gap-0.5">' + rowItems + '</div>';
+							startIndex += rowCount;
+						}
+						
+						locBadge = '<div class="flex flex-col gap-0.5 justify-center items-center mt-1 w-max mx-auto" dir="ltr">' + rowsHtml + '</div>';
 					}
 					let proxyListConfig = [];
 					try {
@@ -6768,9 +7052,15 @@ ${COMMON_TOAST_HTML}
 					} catch(e) {
 						proxyListConfig = [user.user_socks5 || user.user_proxy_ip];
 					}
-					if (!Array.isArray(proxyListConfig) || proxyListConfig.length === 0) proxyListConfig = [null];
-					let hasDir = proxyListConfig.some(function(p) { return p === null || p === ""; });
-					if (!hasDir) proxyListConfig.push(null);
+					if (!Array.isArray(proxyListConfig) || proxyListConfig.length === 0) proxyListConfig = [];
+					const allowDirectConfig = user.enable_direct !== 0;
+					if (allowDirectConfig) {
+						let hasDir = proxyListConfig.some(function(p) { return p === null || p === ""; });
+						if (!hasDir) proxyListConfig.push(null);
+					} else {
+						proxyListConfig = proxyListConfig.filter(function(p) { return p !== null && p !== ""; });
+					}
+					if (proxyListConfig.length === 0) proxyListConfig = [null];
 					let numProxies = proxyListConfig.length;
 					let numIps = user.ips ? user.ips.split('\\n').filter(function(ip) { return ip.trim().length > 0; }).length : 1;
 					if (numIps === 0) numIps = 1;
@@ -6780,7 +7070,7 @@ ${COMMON_TOAST_HTML}
 					const enableVless = userConnType.includes('vless') || userConnType === 'vl' + 'e' + 'ss' || (!userConnType.includes('trojan'));
 					const enableTrojan = userConnType.includes('trojan');
 					const protoCount = (enableVless ? 1 : 0) + (enableTrojan ? 1 : 0);
-					let totalConfigs = 3 + (numProxies * numIps * numPorts * (protoCount || 1));
+					let totalConfigs = (allowDirectConfig ? 3 : 2) + (numProxies * numIps * numPorts * (protoCount || 1));
 					let configColorClass = 'text-green-800 dark:text-green-700';
 					if (totalConfigs > 100) configColorClass = 'text-red-600 dark:text-red-500';
 					else if (totalConfigs > 80) configColorClass = 'text-orange-500';
@@ -6801,9 +7091,7 @@ ${COMMON_TOAST_HTML}
 											(user.is_online === 1 ? '<span class="px-1 py-0 h-3.5 inline-flex items-center justify-center leading-none text-[9px] font-medium bg-green-600 text-white rounded animate-pulse" dir="rtl">' + user.online_count + '</span>' : '<span class="px-1 py-0 h-3.5 inline-flex items-center justify-center leading-none text-[9px] font-medium bg-gray-200 text-gray-600 dark:bg-zinc-800 dark:text-zinc-400 rounded">آفلاین</span>') +
 										'</div>' +
 										'<span class="font-bold text-gray-900 dark:text-zinc-100 text-xs truncate max-w-full pt-0.5 leading-normal">' + user.username + '</span>' +
-										'<div class="flex flex-nowrap items-center justify-center gap-0.5">' +
-											locBadge +
-										'</div>' +
+										locBadge +
 									'</div>' +
 								'</td>' +
 								'<td class="bg-white/60 dark:bg-zinc-900/40  group-hover:bg-white/80 dark:group-hover:bg-zinc-900/60 p-1.5 border-y border-gray-200 dark:border-zinc-800 text-center">' +
@@ -6818,17 +7106,31 @@ ${COMMON_TOAST_HTML}
 									'</div>' +
 								'</td>' +
 								'<td class="bg-white/60 dark:bg-zinc-900/40  group-hover:bg-white/80 dark:group-hover:bg-zinc-900/60 p-1.5 border-y border-gray-200 dark:border-zinc-800">' +
-									'<div class="flex flex-col gap-1 w-[90px] mx-auto">' +
-										'<button data-user="' + encodeURIComponent(user.username) + '" onclick="copySubLink(this.dataset.user)" class="w-full h-[24px] p-0 flex items-center justify-center gap-1 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 rounded-full text-[9px] font-bold transition border border-indigo-200 dark:border-indigo-800">' +
-											'<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"></path></svg>' +
-											'ساب متنی' +
+									'<div class="flex flex-col gap-1 w-[115px] mx-auto">' +
+										'<!-- وضعیت (تمام عرض) -->' +
+										'<button data-user="' + encodeURIComponent(user.username) + '" onclick="copyStatusLink(this.dataset.user)" class="w-full h-[24px] p-0 flex items-center justify-center gap-1 bg-green-50 dark:bg-green-900/30 text-green-700 dark:text-green-500 hover:bg-green-100 dark:hover:bg-green-900/50 rounded-full text-[9px] font-bold transition border border-green-200 dark:border-green-800 whitespace-nowrap">' +
+											'<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path></svg>' +
+											'وضعیت اتصال' +
 										'</button>' +
+										
+										'<!-- ساب متنی + QR -->' +
 										'<div class="flex flex-row gap-1 w-full h-[24px]">' +
-											'<button data-user="' + encodeURIComponent(user.username) + '" onclick="copyStatusLink(this.dataset.user)" class="flex-1 h-[24px] p-0 flex items-center justify-center gap-1 bg-green-50 dark:bg-green-900/30 text-green-700 dark:text-green-500 hover:bg-green-100 dark:hover:bg-green-900/50 rounded-full text-[9px] font-bold transition border border-green-200 dark:border-green-800 whitespace-nowrap">' +
-												'<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path></svg>' +
-												'وضعیت' +
+											'<button data-user="' + encodeURIComponent(user.username) + '" onclick="copySubLink(this.dataset.user)" class="flex-1 h-[24px] p-0 flex items-center justify-center gap-1 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 rounded-full text-[9px] font-bold transition border border-indigo-200 dark:border-indigo-800 whitespace-nowrap">' +
+												'<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"></path></svg>' +
+												'ساب متنی' +
 											'</button>' +
-											'<button data-user="' + encodeURIComponent(user.username) + '" onclick="showSubQr(this.dataset.user)" title="QR ساب" class="w-[24px] h-[24px] flex-shrink-0 p-0 flex items-center justify-center bg-amber-50 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 hover:bg-amber-100 dark:hover:bg-amber-900/50 rounded-full transition border border-amber-200 dark:border-amber-800">' +
+											'<button data-user="' + encodeURIComponent(user.username) + '" onclick="showSubQr(this.dataset.user)" title="QR ساب متنی" class="w-[24px] h-[24px] flex-shrink-0 p-0 flex items-center justify-center bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 rounded-full transition border border-indigo-200 dark:border-indigo-800">' +
+												'<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm14 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 19h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z"></path></svg>' +
+											'</button>' +
+										'</div>' +
+
+										'<!-- ساب Sing-box + QR -->' +
+										'<div class="!hidden flex-row gap-1 w-full h-[24px]">' +
+											'<button data-user="' + encodeURIComponent(user.username) + '" onclick="copySingboxLink(this.dataset.user)" class="flex-1 h-[24px] p-0 flex items-center justify-center gap-1 bg-purple-50 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 hover:bg-purple-100 dark:hover:bg-purple-900/50 rounded-full text-[9px] font-bold transition border border-purple-200 dark:border-purple-800 whitespace-nowrap">' +
+												'<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"></path></svg>' +
+												'سینگ‌باکس' +
+											'</button>' +
+											'<button data-user="' + encodeURIComponent(user.username) + '" onclick="showSingboxQr(this.dataset.user)" title="QR سینگ‌باکس" class="w-[24px] h-[24px] flex-shrink-0 p-0 flex items-center justify-center bg-purple-50 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 hover:bg-purple-100 dark:hover:bg-purple-900/50 rounded-full transition border border-purple-200 dark:border-purple-800">' +
 												'<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm14 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 19h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z"></path></svg>' +
 											'</button>' +
 										'</div>' +
@@ -7141,6 +7443,7 @@ ${COMMON_TOAST_HTML}
 			}
 			const auto_rotate_user_proxy = document.getElementById('input-auto-rotate-user-proxy') ? (document.getElementById('input-auto-rotate-user-proxy').checked ? 1 : 0) : 0;
 			const start_on_first_connect = document.getElementById('input-start-on-first-connect') ? (document.getElementById('input-start-on-first-connect').checked ? 1 : 0) : 0;
+			const enable_direct = document.getElementById('input-enable-direct') ? document.getElementById('input-enable-direct').checked : true;
 			if (checkedPorts.length === 0) {
 				alert('⚠️ لطفا حداقل یک پورت را برای اتصال انتخاب کنید!');
 				updateSubmitBtnState(isEditMode ? 'ذخیره تغییرات' : 'ایجاد کاربر', false);
@@ -7170,6 +7473,7 @@ ${COMMON_TOAST_HTML}
 						ip_count: ip_count,
 						auto_rotate_user_proxy: auto_rotate_user_proxy,
 						start_on_first_connect: start_on_first_connect,
+						enable_direct: enable_direct,
 						connection_type: connection_type,
 						protocols: selectedProtocols
 					})
@@ -7242,7 +7546,7 @@ window.renderProxyFieldsUI = function() {
 		wrapper.appendChild(row);
 	});
 	if (addBtn) {
-		addBtn.style.display = window.proxyFieldsData.length >= 8 ? "none" : "flex";
+		addBtn.style.display = window.proxyFieldsData.length >= 15 ? "none" : "flex";
 	}
 };
 document.addEventListener('keydown', function(event) {
@@ -7313,7 +7617,7 @@ window.updateProxyFieldData = function(idx, val) {
 	}
 };
 window.addProxyFieldUI = function() {
-	if (window.proxyFieldsData.length < 8) {
+	if (window.proxyFieldsData.length < 15) {
 		window.proxyFieldsData.push("");
 		window.activeProxyIndex = window.proxyFieldsData.length - 1;
 		window.renderProxyFieldsUI();
@@ -7322,6 +7626,8 @@ window.addProxyFieldUI = function() {
 			if (newField && newField.tagName.toLowerCase() === 'input') {
 				newField.focus();
 			}
+			const addBtn = document.getElementById("add-proxy-field-btn");
+			if (addBtn) addBtn.style.display = window.proxyFieldsData.length >= 15 ? "none" : "flex";
 		}, 50);
 	}
 };
@@ -7504,10 +7810,55 @@ function downloadZeusSource() {
 			if (window.zeus_global_msg_version !== version) {
 				document.getElementById('global-message-content').innerHTML = content;
 				setModalState('global-message-modal', true);
-				document.getElementById('global-message-close-btn').onclick = function() {
-					setModalState('global-message-modal', false);
-					window.zeus_global_msg_version = version;
+				
+				const oldBtn = document.getElementById('global-message-close-btn');
+				const newBtn = oldBtn.cloneNode(true);
+				oldBtn.parentNode.replaceChild(newBtn, oldBtn);
+				
+				const btn = document.getElementById('global-message-close-btn');
+				const prog = document.getElementById('global-message-progress');
+				
+				let holdTimer = null;
+				let startTime = 0;
+				let animFrame = null;
+				
+				const stopHold = () => {
+					cancelAnimationFrame(animFrame);
+					if (holdTimer) clearTimeout(holdTimer);
+					holdTimer = null;
+					if (prog) prog.style.width = '0%';
+					if (btn) btn.style.transform = 'scale(1)';
 				};
+				
+				const startHold = (e) => {
+					if (e.type !== 'mousedown') e.preventDefault();
+					stopHold();
+					startTime = performance.now();
+					if (btn) btn.style.transform = 'scale(0.96)';
+					
+					const animate = (time) => {
+						let elapsed = time - startTime;
+						let percent = Math.min((elapsed / 3000) * 100, 100);
+						if (prog) prog.style.width = percent + '%';
+						if (percent < 100) {
+							animFrame = requestAnimationFrame(animate);
+						}
+					};
+					animFrame = requestAnimationFrame(animate);
+					
+					holdTimer = setTimeout(() => {
+						stopHold();
+						setModalState('global-message-modal', false);
+						window.zeus_global_msg_version = version;
+					}, 3000);
+				};
+				
+				btn.addEventListener('mousedown', startHold);
+				btn.addEventListener('touchstart', startHold, {passive: false});
+				btn.addEventListener('mouseup', stopHold);
+				btn.addEventListener('mouseleave', stopHold);
+				btn.addEventListener('touchend', stopHold);
+				btn.addEventListener('touchcancel', stopHold);
 			}
 		} catch (err) {}
 	}
@@ -7560,9 +7911,15 @@ function downloadZeusSource() {
 			} catch (e) {
 				proxyList = [user.user_socks5 || user.user_proxy_ip];
 			}
-			if (!Array.isArray(proxyList) || proxyList.length === 0) proxyList = [null];
-			let hasDirect = proxyList.some(function(p) { return p === null || p === ""; });
-			if (!hasDirect) proxyList.push(null);
+			if (!Array.isArray(proxyList) || proxyList.length === 0) proxyList = [];
+			const allowDirect = user.enable_direct !== 0;
+			if (allowDirect) {
+				let hasDirect = proxyList.some(function(p) { return p === null || p === ""; });
+				if (!hasDirect) proxyList.push(null);
+			} else {
+				proxyList = proxyList.filter(function(p) { return p !== null && p !== ""; });
+			}
+			if (proxyList.length === 0) proxyList = [null];
 			let proxyFlagCache = {};
 			try { proxyFlagCache = JSON.parse(localStorage.getItem('proxy_flag_cache_v2') || '{}'); } catch(e) {}
 			let resolvedProxies = [];
@@ -7609,6 +7966,9 @@ function downloadZeusSource() {
 		function getSubLink(username) {
 			return window.location.origin + '/feed/' + encodeURIComponent(username);
 		}
+		function getSingboxLink(username) {
+			return window.location.origin + '/singbox/' + encodeURIComponent(username);
+		}
 		function getStatusLink(username) {
 			return window.location.origin + '/status/' + encodeURIComponent(username);
 		}
@@ -7616,6 +7976,14 @@ function downloadZeusSource() {
 			const username = decodeURIComponent(encodedUsername);
 			navigator.clipboard.writeText(getSubLink(username)).then(() => {
 				alert('✅ لینک ساب متنی با موفقیت کپی شد!');
+			}).catch(() => {
+				alert('خطا در کپی کردن لینک ساب!');
+			});
+		}
+		function copySingboxLink(encodedUsername) {
+			const username = decodeURIComponent(encodedUsername);
+			navigator.clipboard.writeText(getSingboxLink(username)).then(() => {
+				alert('✅ لینک ساب Sing-box با موفقیت کپی شد!');
 			}).catch(() => {
 				alert('خطا در کپی کردن لینک ساب!');
 			});
@@ -7676,6 +8044,11 @@ function downloadZeusSource() {
 		function showSubQr(encodedUsername) {
 			const username = decodeURIComponent(encodedUsername);
 			const link = getSubLink(username);
+			toggleQrModal(true, link);
+		}
+		function showSingboxQr(encodedUsername) {
+			const username = decodeURIComponent(encodedUsername);
+			const link = getSingboxLink(username);
 			toggleQrModal(true, link);
 		}
 		function copyStatusLink(encodedUsername) {
@@ -7755,6 +8128,8 @@ function editUser(encodedUsername) {
 	if (typeof window.toggleAdvancedSettingsInputs === 'function') window.toggleAdvancedSettingsInputs(hasAdvSettings);
 	const autoRotateUserProxyCheck = document.getElementById('input-auto-rotate-user-proxy');
 	if (autoRotateUserProxyCheck) autoRotateUserProxyCheck.checked = (user.auto_rotate_user_proxy === 1);
+	const enableDirectCheck = document.getElementById('input-enable-direct');
+	if (enableDirectCheck) enableDirectCheck.checked = (user.enable_direct !== 0);
 	const hasAutoReset = Boolean((user.auto_reset_vol_days && user.auto_reset_vol_days > 0) || (user.auto_reset_req_days && user.auto_reset_req_days > 0));
 	const autoResetToggle = document.getElementById('input-auto-reset-toggle');
 	if (autoResetToggle) autoResetToggle.checked = hasAutoReset;
@@ -7815,14 +8190,12 @@ function editUser(encodedUsername) {
 				}
 			}
 		}
-		/* پرچم‌ها به‌صورت SVG نمایش داده می‌شوند تا روی ویندوز (که فونت پرچم ندارد) هم درست دیده شوند. */
 		function getFlagEmoji(countryCode) {
 			if (!countryCode) return '<span class="zeus-flag-globe">🌐</span>';
 			const cc = String(countryCode).toLowerCase().replace(/[^a-z]/g, '');
 			if (cc.length !== 2) return '<span class="zeus-flag-globe">🌐</span>';
 			return '<span class="fi fi-' + cc + ' zeus-flag" title="' + cc.toUpperCase() + '"></span>';
 		}
-		/* نسخه متنی (emoji) برای استفاده داخل URL/remark لینک VLESS - کلاینت‌های v2ray HTML رندر نمی‌کنند */
 		function getFlagEmojiText(countryCode) {
 			if (!countryCode) return '🌐';
 			const cc = String(countryCode).toUpperCase().replace(/[^A-Z]/g, '');
@@ -7833,7 +8206,14 @@ function editUser(encodedUsername) {
 				return '🌐';
 			}
 		}
-window.toggleGfx = function(isChecked) {
+window.toggleGfx = async function(isChecked) {
+	try {
+		await fetch('/api/settings/bulk', {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ settings: { gfx_enabled: isChecked ? '1' : '0' } })
+		});
+	} catch (e) {}
 	localStorage.setItem('gfx-enabled', isChecked ? 'true' : 'false');
 	showToast('⚙️ تنظیمات گرافیکی تغییر کرد. در حال بارگذاری مجدد...');
 	setTimeout(() => window.location.reload(), 1500);
@@ -7873,7 +8253,6 @@ async function loadProxyFlags() {
 		const proxyStr = badge.getAttribute('data-proxy');
 		if (!proxyStr) continue;
 		if (cache[proxyStr]) {
-			/* کش کد کشور (۲ حرف) را ذخیره می‌کند؛ برای نمایش SVG می‌سازیم */
 			const cachedCc = cache[proxyStr];
 			badge.innerHTML = (typeof cachedCc === 'string' && /^[a-zA-Z]{2}$/.test(cachedCc) && typeof getFlagEmoji === 'function') ? getFlagEmoji(cachedCc) : '<span class="zeus-flag-globe">🌐</span>';
 			badge.classList.remove('async-proxy-flag');
@@ -7896,7 +8275,6 @@ async function loadProxyFlags() {
 			let flagSvg = '<span class="zeus-flag-globe">🌐</span>';
 			if (res.ok && data.success && data.country) {
 				flagSvg = typeof getFlagEmoji === 'function' ? getFlagEmoji(data.country) : flagSvg;
-				/* کش کد کشور (۲ حرف بزرگ) را ذخیره می‌کند تا هم برای UI (SVG) و هم remark (text) قابل استفاده باشد */
 				cache[proxyStr] = data.country.toUpperCase();
 				localStorage.setItem('proxy_flag_cache_v2', JSON.stringify(cache));
 			}
@@ -7982,7 +8360,7 @@ async function testUserSocksProxy() {
 		} else {
 			if (isAutoRotate) {
 				let swapSuccess = false;
-				let maxSwaps = 8; 
+				let maxSwaps = 15; 
 				let currentBadProxy = proxyStr;
 				for (let attempt = 1; attempt <= maxSwaps; attempt++) {
 					resultSpan = document.getElementById('proxy-ping-label-' + idx);
@@ -8175,6 +8553,7 @@ async function testUserSocksProxy() {
 							ip_count: u.ip_count,
 							auto_rotate_user_proxy: u.auto_rotate_user_proxy,
 							start_on_first_connect: u.start_on_first_connect,
+							enable_direct: u.enable_direct !== undefined ? u.enable_direct : 1,
 							connection_type: u.connection_type
 						};
 
@@ -8262,7 +8641,7 @@ async function testUserSocksProxy() {
 				window.location.reload();
 			}
 		}
-const CURRENT_VERSION = '2.0.5';
+const CURRENT_VERSION = '2.0.6';
 const UPDATE_FIX = "constsCURRENT_VERSION='d.d.d'";
 		window.autoUpdateStatusCache = false;
 		async function checkAutoUpdateSetup() {
@@ -8633,7 +9012,13 @@ function applySelectedIps() {
 				freeCard.classList.add('opacity-100', 'scale-100');
 			}, 23000);
 			const gfxToggle = document.getElementById('gfx-toggle');
-			if (gfxToggle) gfxToggle.checked = localStorage.getItem('gfx-enabled') !== 'false';
+			if (gfxToggle) {
+				if (window.GLOBAL_GFX && !window.GLOBAL_GFX.startsWith('/*')) {
+					gfxToggle.checked = window.GLOBAL_GFX === 'true';
+				} else {
+					gfxToggle.checked = localStorage.getItem('gfx-enabled') === 'true';
+				}
+			}
 			
 			const versionBadge = document.getElementById('panel-version');
 			if (versionBadge) versionBadge.innerText = 'v' + CURRENT_VERSION;
@@ -8690,10 +9075,7 @@ function applySelectedIps() {
 				if (e.target.id === 'online-counter-warning-modal') closeOnlineCounterWarning();
 				if (e.target.id === 'config-count-warning-modal') closeConfigCountWarning();
 				if (e.target.id === 'pattng-info-modal') togglePattNgModal(false);
-				if (e.target.id === 'global-message-modal') {
-					const closeBtn = document.getElementById('global-message-close-btn');
-					if (closeBtn) closeBtn.click();
-				}
+				
 				if (e.target.id === 'proxy-selector-modal') toggleProxySelectorModal(false);
 				if (e.target.id === 'donate-modal') toggleDonateModal(false);
 				if (e.target.id === 'support-modal') toggleSupportModal(false);
@@ -8715,7 +9097,6 @@ function toggleProxySelectorModal(show) { setModalState('proxy-selector-modal', 
 				cachedVipList.forEach(function(country) {
 					const option = document.createElement('option');
 					option.value = country;
-					/* <option> قادر به رندر HTML نیست، از نسخه متنی emoji استفاده می‌کنیم */
 					const flag = typeof getFlagEmojiText === 'function' ? getFlagEmojiText(country) : '🌐';
 					option.textContent = flag + ' ' + country;
 					select.appendChild(option);
@@ -8788,7 +9169,6 @@ function toggleProxySelectorModal(show) { setModalState('proxy-selector-modal', 
 			countriesList.forEach(function(country) {
 				const option = document.createElement('option');
 				option.value = country;
-				/* <option> قادر به رندر HTML نیست، از نسخه متنی emoji استفاده می‌کنیم */
 				const flag = typeof getFlagEmojiText === 'function' ? getFlagEmojiText(country) : '🌐';
 				option.textContent = flag + ' ' + country;
 				select.appendChild(option);
@@ -9121,7 +9501,6 @@ const WORKER_DONATE_URL = "https://si-491177.taile4bcbb.ts.net/donate";
 			background: rgba(10, 10, 10, 0.6);
 			border: 1px solid rgba(255, 255, 255, 0.05);
 		}
-		/* پرچم‌های SVG برای سازگاری با ویندوز */
 		.zeus-flag {
 			display: inline-block;
 			width: 1.35em;
@@ -9238,6 +9617,14 @@ const WORKER_DONATE_URL = "https://si-491177.taile4bcbb.ts.net/donate";
 					<span class="flex items-center gap-2"><svg class="w-4 h-4 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm14 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 19h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z"></path></svg> دریافت کیوآر کد ساب</span>
 					<span class="text-amber-500">نمایش</span>
 				</button>
+				<button onclick="copySingboxSub()" class="!hidden w-full flex justify-between items-center px-4 py-3 bg-white dark:bg-amoled-card border border-gray-200 dark:border-amoled-border hover:border-purple-500 dark:hover:border-purple-500 rounded-md text-xs font-medium transition shadow-sm">
+					<span class="flex items-center gap-2"><svg class="w-4 h-4 text-purple-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"></path></svg> کپی لینک ساب‌اسکریپشن Sing-box</span>
+					<span class="text-purple-500">کپی</span>
+				</button>
+				<button onclick="showSingboxQr()" class="!hidden w-full flex justify-between items-center px-4 py-3 bg-white dark:bg-amoled-card border border-gray-200 dark:border-amoled-border hover:border-pink-500 dark:hover:border-pink-500 rounded-md text-xs font-medium transition shadow-sm">
+					<span class="flex items-center gap-2"><svg class="w-4 h-4 text-pink-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm14 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 19h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z"></path></svg> دریافت کیوآر کد ساب Sing-box</span>
+					<span class="text-pink-500">نمایش</span>
+				</button>
 				<button onclick="copyvIeesConfig()" class="w-full flex justify-between items-center px-4 py-3 bg-white dark:bg-amoled-card border border-gray-200 dark:border-amoled-border hover:border-blue-500 dark:hover:border-blue-500 rounded-md text-xs font-medium transition shadow-sm">
 					<span class="flex items-center gap-2"><svg class="w-4 h-4 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg> کپی کـانفـیگ‌های اتصال (مستقیم)</span>
 					<span class="text-blue-500">کپی</span>
@@ -9259,6 +9646,7 @@ const WORKER_DONATE_URL = "https://si-491177.taile4bcbb.ts.net/donate";
 						اندروید
 					</div>
 					<div class="flex flex-col gap-1.5">
+						<a href="https://github.com/patterniha/PattNG/releases/latest" target="_blank" class="flex justify-between items-center bg-white dark:bg-amoled-card border border-green-300 dark:border-green-800 px-2 py-1.5 rounded text-[10px] font-bold text-green-700 dark:text-green-400 hover:border-green-500 dark:hover:border-green-500 transition shadow-sm"><span>PattNG (پیشنهادی)</span><span class="text-green-500 text-[12px]">📥</span></a>
 						<a href="https://github.com/2dust/v2rayNG/releases/latest" target="_blank" class="flex justify-between items-center bg-white dark:bg-amoled-card border border-gray-100 dark:border-zinc-800 px-2 py-1.5 rounded text-[10px] font-semibold text-gray-700 dark:text-zinc-300 hover:border-green-400 dark:hover:border-green-500 transition shadow-sm"><span>v2rayNG</span><span class="text-green-500 text-[12px]">📥</span></a>
 						<a href="https://github.com/Happ-proxy/happ-android/releases/latest/download/Happ.apk" target="_blank" class="flex justify-between items-center bg-white dark:bg-amoled-card border border-gray-100 dark:border-zinc-800 px-2 py-1.5 rounded text-[10px] font-semibold text-gray-700 dark:text-zinc-300 hover:border-green-400 dark:hover:border-green-500 transition shadow-sm"><span>happ</span><span class="text-green-500 text-[12px]">📥</span></a>
 						<a href="https://github.com/hiddify/hiddify-app/releases/latest/download/Hiddify-Android-universal.apk" target="_blank" class="flex justify-between items-center bg-white dark:bg-amoled-card border border-gray-100 dark:border-zinc-800 px-2 py-1.5 rounded text-[10px] font-semibold text-gray-700 dark:text-zinc-300 hover:border-green-400 dark:hover:border-green-500 transition shadow-sm"><span>Hiddify</span><span class="text-green-500 text-[12px]">📥</span></a>
@@ -9274,6 +9662,7 @@ const WORKER_DONATE_URL = "https://si-491177.taile4bcbb.ts.net/donate";
 						ویندوز
 					</div>
 					<div class="flex flex-col gap-1.5">
+						<a href="https://github.com/patterniha/PattN/releases/latest/download/PattN-windows-64.zip" target="_blank" class="flex justify-between items-center bg-white dark:bg-amoled-card border border-blue-300 dark:border-blue-800 px-2 py-1.5 rounded text-[10px] font-bold text-blue-700 dark:text-blue-400 hover:border-blue-500 dark:hover:border-blue-500 transition shadow-sm"><span>PattN (پیشنهادی)</span><span class="text-blue-500 text-[12px]">📥</span></a>
 						<a href="https://github.com/2dust/v2rayN/releases/latest/download/v2rayN-windows-64.zip" target="_blank" class="flex justify-between items-center bg-white dark:bg-amoled-card border border-gray-100 dark:border-zinc-800 px-2 py-1.5 rounded text-[10px] font-semibold text-gray-700 dark:text-zinc-300 hover:border-blue-400 dark:hover:border-blue-500 transition shadow-sm"><span>v2rayN</span><span class="text-blue-500 text-[12px]">📥</span></a>
 						<a href="https://github.com/Happ-proxy/happ-desktop/releases/latest/download/setup-Happ.x64.exe" target="_blank" class="flex justify-between items-center bg-white dark:bg-amoled-card border border-gray-100 dark:border-zinc-800 px-2 py-1.5 rounded text-[10px] font-semibold text-gray-700 dark:text-zinc-300 hover:border-blue-400 dark:hover:border-blue-500 transition shadow-sm"><span>happ</span><span class="text-blue-500 text-[12px]">📥</span></a>
 						<a href="https://github.com/hiddify/hiddify-app/releases/latest/download/Hiddify-Windows-Setup-x64.exe" target="_blank" class="flex justify-between items-center bg-white dark:bg-amoled-card border border-gray-100 dark:border-zinc-800 px-2 py-1.5 rounded text-[10px] font-semibold text-gray-700 dark:text-zinc-300 hover:border-blue-400 dark:hover:border-blue-500 transition shadow-sm"><span>Hiddify</span><span class="text-blue-500 text-[12px]">📥</span></a>
@@ -9399,9 +9788,15 @@ ${COMMON_TOAST_HTML}
 			} catch (e) {
 				proxyList = [u.user_socks5 || u.user_proxy_ip];
 			}
-			if (!Array.isArray(proxyList) || proxyList.length === 0) proxyList = [null];
-			let hasDirect = proxyList.some(function(p) { return p === null || p === ""; });
-			if (!hasDirect) proxyList.push(null);
+			if (!Array.isArray(proxyList) || proxyList.length === 0) proxyList = [];
+			const allowDirect = u.enable_direct !== 0;
+			if (allowDirect) {
+				let hasDirect = proxyList.some(function(p) { return p === null || p === ""; });
+				if (!hasDirect) proxyList.push(null);
+			} else {
+				proxyList = proxyList.filter(function(p) { return p !== null && p !== ""; });
+			}
+			if (proxyList.length === 0) proxyList = [null];
 			let proxyFlagCache = {};
 			try { proxyFlagCache = JSON.parse(localStorage.getItem('proxy_flag_cache_v2') || '{}'); } catch(e) {}
 			let resolvedProxies = [];
@@ -9451,6 +9846,10 @@ ${COMMON_TOAST_HTML}
 		function copyTextSub() {
 			const link = window.location.protocol + '//' + getHost() + '/sub/' + encodeURIComponent(window.statusUser.username);
 			navigator.clipboard.writeText(link).then(() => alert('✅ لینک ساب متنی کپی شد!'));
+		}
+		function copySingboxSub() {
+			const link = window.location.protocol + '//' + getHost() + '/singbox/' + encodeURIComponent(window.statusUser.username);
+			navigator.clipboard.writeText(link).then(() => alert('✅ لینک ساب Sing-box کپی شد!'));
 		}
 		function toggleQrModal(show, text) {
 			const modal = document.getElementById('qr-modal');
@@ -9519,14 +9918,16 @@ ${COMMON_TOAST_HTML}
 			const link = window.location.protocol + '//' + getHost() + '/sub/' + encodeURIComponent(window.statusUser.username);
 			toggleQrModal(true, link);
 		}
-		/* پرچم‌ها به‌صورت SVG نمایش داده می‌شوند تا روی ویندوز (که فونت پرچم ندارد) هم درست دیده شوند. */
+		function showSingboxQr() {
+			const link = window.location.protocol + '//' + getHost() + '/singbox/' + encodeURIComponent(window.statusUser.username);
+			toggleQrModal(true, link);
+		}
 		function getFlagEmoji(countryCode) {
 			if (!countryCode) return '<span class="zeus-flag-globe">🌐</span>';
 			const cc = String(countryCode).toLowerCase().replace(/[^a-z]/g, '');
 			if (cc.length !== 2) return '<span class="zeus-flag-globe">🌐</span>';
 			return '<span class="fi fi-' + cc + ' zeus-flag" title="' + cc.toUpperCase() + '"></span>';
 		}
-		/* نسخه متنی (emoji) برای استفاده داخل URL/remark لینک VLESS */
 		function getFlagEmojiText(countryCode) {
 			if (!countryCode) return '🌐';
 			const cc = String(countryCode).toUpperCase().replace(/[^A-Z]/g, '');
@@ -9565,7 +9966,6 @@ const flagContainer = document.getElementById('display-flag');
 		if (targetCountry) return getFlagEmoji(targetCountry);
 		try {
 			const proxyFlagCache = JSON.parse(localStorage.getItem('proxy_flag_cache_v2') || '{}');
-			/* کش همیشه کد کشور (۲ حرف) را ذخیره می‌کند */
 			const cached = proxyFlagCache[targetProxy];
 			if (cached && typeof cached === 'string' && /^[a-zA-Z]{2}$/.test(cached)) return getFlagEmoji(cached);
 		} catch(e) {}
@@ -9592,7 +9992,6 @@ const flagContainer = document.getElementById('display-flag');
 				const flagSvg = getFlagEmoji(data.country);
 				try {
 					const cache = JSON.parse(localStorage.getItem('proxy_flag_cache_v2') || '{}');
-					/* کد کشور را کش می‌کنیم تا هم برای UI (SVG) و هم remark (text) قابل استفاده باشد */
 					cache[targetProxy] = data.country.toUpperCase();
 					localStorage.setItem('proxy_flag_cache_v2', JSON.stringify(cache));
 				} catch(e) {}
