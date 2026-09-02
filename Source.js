@@ -1196,7 +1196,7 @@ const Router = {
 						const now = Date.now();
 						const enrichedUsers = (results || []).map((user) => ({
 							...user,
-							is_online: user.last_active && now - user.last_active < 60000 ? 1 : 0,
+							is_online: user.last_active && now - user.last_active < 180000 ? 1 : 0,
 							online_count: getActiveIpCount(user.active_ips),
 						}));
 						let cfReqs = { today: 0, total: 0, d1Reads: 0, d1Writes: 0 };
@@ -1461,7 +1461,7 @@ function getActiveIpCount(activeIpsJson) {
 		let count = 0;
 		for (const [ip, data] of Object.entries(activeIps)) {
 			const lastSeen = data && typeof data === "object" ? data.timestamp : data;
-			if (now - lastSeen <= 60000) {
+			if (now - lastSeen <= 180000) {
 				count++;
 			}
 		}
@@ -1524,7 +1524,7 @@ const SubscriptionService = {
 			remReq = rem > 0 ? rem.toLocaleString() + "Req" : "0Req";
 		}
 		const infoRemark = "📊 remaining | \u200E" + remVol + " | \u200E" + remTime + " | \u200E" + remReq;
-		links.push("vl" + "e" + "ss://" + user.uuid + "@" + host + ":80?path=" + dynPath + "&security=none&encryption=none&host=" + host + "&fp=" + fp + "&type=ws#" + encodeURIComponent(infoRemark));
+links.push("vl" + "e" + "ss://" + user.uuid + "@0.0.0.0:1?encryption=none&security=none&type=ws&host=" + host + "&path=" + dynPath + "#" + encodeURIComponent(infoRemark));
 		const rawPath = "/stream/PANEL_ZEUS/" + ((user.uuid || "").split("-")[4] || "default");
 		let proxyList = [];
 		try {
@@ -1956,8 +1956,8 @@ async function handlevIees(env, storedData = null, ctx = null, request = null) {
 		if (GLOBAL_WRITE_LOCK.get(username)) return;
 		let lastDbWrite = GLOBAL_LAST_DB_WRITE.get(username) || 0;
 		let now = Date.now();
-		let thresholdBytes = 50 * 1024 * 1024;
-		if ((current >= thresholdBytes && now - lastDbWrite > 20000) || (current > 0 && now - lastDbWrite > 120000)) {
+		let thresholdBytes = 250 * 1024 * 1024;
+		if ((current >= thresholdBytes && now - lastDbWrite > 60000) || (current > 0 && now - lastDbWrite > 300000)) {
 			GLOBAL_WRITE_LOCK.set(username, true);
 			let toCommit = GLOBAL_TRAFFIC_CACHE.get(username) || 0;
 			let toCommitReq = USER_REQ_CACHE.get(username) || 0;
@@ -1991,31 +1991,6 @@ async function handlevIees(env, storedData = null, ctx = null, request = null) {
 		isOfflineSet = true;
 		const uname = username;
 		if (!uname) return;
-		if (clientIP && clientIP !== "unknown" && validUUID) {
-			const removeIpTask = async () => {
-				try {
-					const user = await env.DB.prepare("SELECT active_ips FROM users WHERE uuid = ?").bind(validUUID).first();
-					if (user) {
-						let activeIps = JSON.parse(user.active_ips || "{}");
-						if (activeIps[clientIP]) {
-							if (typeof activeIps[clientIP] === "object") {
-								activeIps[clientIP].count = (activeIps[clientIP].count || 1) - 1;
-								if (activeIps[clientIP].count <= 0) {
-									delete activeIps[clientIP];
-								}
-							} else {
-								delete activeIps[clientIP];
-							}
-							await env.DB.prepare("UPDATE users SET active_ips = ? WHERE uuid = ?").bind(JSON.stringify(activeIps), validUUID).run();
-						}
-					}
-				} catch (e) {
-					console.error(`[setOffline Task] Error: ${e.message}`);
-				}
-			};
-			if (ctx) ctx.waitUntil(removeIpTask());
-			else removeIpTask();
-		}
 		let activeCount = ACTIVE_CONNECTIONS_COUNT.get(uname) || 0;
 		if (hasCountedAsActive) {
 			activeCount = Math.max(0, activeCount - 1);
@@ -2064,7 +2039,7 @@ async function handlevIees(env, storedData = null, ctx = null, request = null) {
 				}
 				const nowTime = Date.now();
 				const lastCheck = GLOBAL_LAST_ACTIVE_WRITE.get(username + "_hb") || 0;
-				if (nowTime - lastCheck >= 60000) {
+				if (nowTime - lastCheck >= 180000) {
 					GLOBAL_LAST_ACTIVE_WRITE.set(username + "_hb", nowTime);
 					const user = await env.DB.prepare("SELECT is_active, limit_gb, used_gb, limit_req, used_req, expiry_days, created_at, ip_limit, active_ips FROM users WHERE uuid = ?").bind(validUUID).first();
 					let isExpired = false;
@@ -2094,7 +2069,7 @@ async function handlevIees(env, storedData = null, ctx = null, request = null) {
 							let hasChanges = false;
 							for (const [ip, data] of Object.entries(activeIps)) {
 								const lastSeen = data && typeof data === "object" ? data.timestamp : data;
-								if (nowTime - lastSeen > 60000) {
+								if (nowTime - lastSeen > 180000) {
 									delete activeIps[ip];
 									hasChanges = true;
 								}
@@ -2424,7 +2399,7 @@ async function handlevIees(env, storedData = null, ctx = null, request = null) {
 				const now = Date.now();
 				for (const [ip, data] of Object.entries(activeIps)) {
 					const lastSeen = data && typeof data === "object" ? data.timestamp : data;
-					if (now - lastSeen > 60000) delete activeIps[ip];
+					if (now - lastSeen > 180000) delete activeIps[ip];
 				}
 				let isNewIp = false;
 				if (!activeIps[clientIP]) {
@@ -2444,7 +2419,7 @@ async function handlevIees(env, storedData = null, ctx = null, request = null) {
 					}
 				}
 				const lastWrite = GLOBAL_LAST_ACTIVE_WRITE.get(username) || 0;
-				if (isNewIp || now - lastWrite > 90000) {
+				if (isNewIp || now - lastWrite > 240000) {
 					GLOBAL_LAST_ACTIVE_WRITE.set(username, now);
 					const updateTask = async () => {
 						try {
@@ -5711,8 +5686,8 @@ const HTML_TEMPLATES = {
 					<div class="relative">
 						<select id="refresh-rate-select" onchange="changeRefreshRate(this.value)" class="w-full pl-8 pr-3 py-2.5 bg-white dark:bg-amoled-input border border-gray-300 dark:border-amoled-border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-700 dark:text-zinc-200 cursor-pointer appearance-none">
 							<option value="1000">۱ ثانیه</option>
-							<option value="2000" selected>۲ ثانیه (پیش‌فرض)</option>
-							<option value="5000">۵ ثانیه</option>
+							<option value="2000">۲ ثانیه</option>
+							<option value="5000" selected>۵ ثانیه (پیش‌فرض)</option>
 							<option value="10000">۱۰ ثانیه</option>
 							<option value="30000">۳۰ ثانیه</option>
 							<option value="60000">۱ دقیقه</option>
@@ -6532,7 +6507,7 @@ ${COMMON_TOAST_HTML}
 						username: username, limit_gb: null, expiry_days: null, limit_req: null, ip_limit: null,
 						auto_reset_vol_days: 0, auto_reset_req_days: 0, frag_len: "", frag_int: "",
 						fingerprint: "unsafe", block_ads: 1, block_porn: 0, port: "443", tls: "on",
-						ips: ipsStr, ip_operator: "all", ip_count: 6, auto_rotate_ip: 1, rotate_time: 1,
+						ips: ipsStr, ip_operator: "all", ip_count: 6, auto_rotate_ip: 1, rotate_time: 5,
 						user_socks5: userSocks5, auto_rotate_user_proxy: 1, connection_type: "vless", enable_direct: false
 					})
 				});
@@ -7966,7 +7941,7 @@ function downloadZeusSource() {
 				remReq = rem > 0 ? rem.toLocaleString() + "Req" : "0Req";
 			}
 			const infoRemark = "📊 remaining | \u200E" + remVol + " | \u200E" + remTime + " | \u200E" + remReq;
-			links.push('vle' + 'ss://' + (user.uuid || '') + '@' + host + ':80?path=' + dynPath + '&security=none&encryption=none&host=' + host + '&fp=' + fp + '&type=ws#' + encodeURIComponent(infoRemark));
+links.push('vle' + 'ss://' + (user.uuid || '') + '@0.0.0.0:1?encryption=none&security=none&type=ws&host=' + host + '&path=' + dynPath + '#' + encodeURIComponent(infoRemark));
 			const rawPath = "/stream/PANEL_ZEUS/" + (user.uuid ? user.uuid.split("-")[4] : "default");
 			let proxyList = [];
 			try {
@@ -8708,7 +8683,7 @@ async function testUserSocksProxy() {
 				window.location.reload();
 			}
 		}
-const CURRENT_VERSION = '2.0.7';
+const CURRENT_VERSION = '2.0.8';
 const UPDATE_FIX = "constsCURRENT_VERSION='d.d.d'";
 		window.autoUpdateStatusCache = false;
 		async function checkAutoUpdateSetup() {
@@ -9108,7 +9083,7 @@ function applySelectedIps() {
 				showToast('نرخ رفرش پـنـل تغییر کرد');
 			};
 			const savedRate = localStorage.getItem('zeus_refresh_rate');
-			const initialRate = savedRate ? parseInt(savedRate, 10) : 2000;
+			const initialRate = savedRate ? parseInt(savedRate, 10) : 5000;
 			const selectEl = document.getElementById('refresh-rate-select');
 			if (selectEl) {
 				selectEl.value = String(initialRate);
@@ -9886,7 +9861,7 @@ ${COMMON_TOAST_HTML}
 				remReq = rem > 0 ? rem.toLocaleString() + "Req" : "0Req";
 			}
 			const infoRemark = "📊 remaining | \u200E" + remVol + " | \u200E" + remTime + " | \u200E" + remReq;
-			links.push('vle' + 'ss://' + (u.uuid || '') + '@' + host + ':80?path=' + dynPath + '&security=none&encryption=none&host=' + host + '&fp=' + fp + '&type=ws#' + encodeURIComponent(infoRemark));
+links.push('vle' + 'ss://' + (u.uuid || '') + '@0.0.0.0:1?encryption=none&security=none&type=ws&host=' + host + '&path=' + dynPath + '#' + encodeURIComponent(infoRemark));
 			const rawPath = "/stream/PANEL_ZEUS/" + (u.uuid ? u.uuid.split("-")[4] : "default");
 			let proxyList = [];
 			try {
