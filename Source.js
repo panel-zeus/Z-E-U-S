@@ -1012,13 +1012,12 @@ const Router = {
 		if (url.pathname === "/api/test-proxy" && request.method === "POST") {
 			const { proxy, skip_country, username, replace_on_fail } = await readJsonBody(request);
 			if (!proxy) return new Response(JSON.stringify({ error: "پـروکـسـی وارد نشده است" }), { status: 400, headers: { "Content-Type": "application/json" } });
-			// --- بخش مربوط به تست پینگ مستقیم سرور ---
+			
 			if (proxy === "direct") {
 				const startT = Date.now();
 				try {
 					const controller = new AbortController();
 					const tid = setTimeout(() => controller.abort(), 3000);
-					// ارسال یک درخواست بسیار سبک به سرورهای کلودفلر برای سنجش سرعت نت آزاد
 					await fetch("https://cp.cloudflare.com/generate_204", { method: "HEAD", signal: controller.signal });
 					clearTimeout(tid);
 					return new Response(JSON.stringify({ success: true, ping: (Date.now() - startT), country: "UN" }), { headers: { "Content-Type": "application/json" } });
@@ -1026,7 +1025,6 @@ const Router = {
 					return new Response(JSON.stringify({ error: "نت آزاد قطع است" }), { status: 200, headers: { "Content-Type": "application/json" } });
 				}
 			}
-			// ----------------------------------------
 			try {
 				let ip = "";
 				let workingProxy = proxy;
@@ -1198,10 +1196,10 @@ const Router = {
 						const now = Date.now();
 						const enrichedUsers = (results || []).map((user) => ({
 							...user,
-							is_online: user.last_active && now - user.last_active < 20000 ? 1 : 0,
+							is_online: user.last_active && now - user.last_active < 60000 ? 1 : 0,
 							online_count: getActiveIpCount(user.active_ips),
 						}));
-						let cfReqs = { today: 0, total: 0 };
+						let cfReqs = { today: 0, total: 0, d1Reads: 0, d1Writes: 0 };
 						try {
 							const liveCf = await getCfUsage(env);
 							const todayStr = new Date().toISOString().split("T")[0];
@@ -1224,6 +1222,8 @@ const Router = {
 							}
 							cfReqs.today = dbToday + GLOBAL_REQ_COUNT;
 							cfReqs.total = dbTotal + GLOBAL_REQ_COUNT;
+							cfReqs.d1Reads = liveCf.d1Reads;
+							cfReqs.d1Writes = liveCf.d1Writes;
 						} catch (e) { }
 						let deletedGb = 0;
 						try {
@@ -1236,6 +1236,8 @@ const Router = {
 								serverTime: now,
 								cfRequestsToday: cfReqs.today,
 								cfRequestsTotal: cfReqs.total,
+								d1Reads: cfReqs.d1Reads,
+								d1Writes: cfReqs.d1Writes,
 								deletedGb: deletedGb,
 							}),
 							{
@@ -1459,7 +1461,7 @@ function getActiveIpCount(activeIpsJson) {
 		let count = 0;
 		for (const [ip, data] of Object.entries(activeIps)) {
 			const lastSeen = data && typeof data === "object" ? data.timestamp : data;
-			if (now - lastSeen <= 20000) {
+			if (now - lastSeen <= 60000) {
 				count++;
 			}
 		}
@@ -1621,17 +1623,20 @@ const SubscriptionService = {
 					const isTlsPort = TLS_PORTS.has(portStr);
 					const tlsVal = isTlsPort ? "tls" : "none";
 					let userFrag = "";
-					if (user.frag_len && user.frag_int) userFrag += "&fragment=" + encodeURIComponent(user.frag_len + "," + user.frag_int + ",tlshello");
+					if (user.frag_len && user.frag_int) userFrag += "&fragment=" + encodeURIComponent(user.frag_len + "," + user.frag_int + (isTlsPort ? ",tlshello" : ""));
 					if (user.advanced_frag) userFrag += "&fm=" + encodeURIComponent(user.advanced_frag);
 					if (isTlsPort && user.cipher_suites) userFrag += "&cs=" + encodeURIComponent(user.cipher_suites);
 					if (user.tls_mask) userFrag += "&mask=" + encodeURIComponent(user.tls_mask);
+						
+					const tlsParams = isTlsPort ? ("&insecure=0&fp=" + fp + "&allowInsecure=0&sni=" + host) : "";
+
 					if (enableVless) {
 						const remark = "ZEUS | " + proxy.flagEmoji + " | " + user.username;
-						links.push("vl" + "e" + "ss://" + user.uuid + "@" + ip + ":" + portStr + "?path=" + proxy.currentDynPath + "&security=" + tlsVal + "&encryption=none&insecure=0&host=" + host + "&fp=" + fp + "&type=ws&allowInsecure=0&sni=" + host + userFrag + "#" + encodeURIComponent(remark));
+						links.push("vl" + "e" + "ss://" + user.uuid + "@" + ip + ":" + portStr + "?path=" + proxy.currentDynPath + "&security=" + tlsVal + "&encryption=none&host=" + host + "&type=ws" + tlsParams + userFrag + "#" + encodeURIComponent(remark));
 					}
 					if (enableTrojan) {
 						const trojanRemark = "ZEUS | " + proxy.flagEmoji + " | " + user.username;
-						links.push("trojan://" + user.uuid + "@" + ip + ":" + portStr + "?path=" + proxy.currentDynPath + "&security=" + tlsVal + "&insecure=0&host=" + host + "&fp=" + fp + "&type=ws&allowInsecure=0&sni=" + host + userFrag + "#" + encodeURIComponent(trojanRemark));
+						links.push("trojan://" + user.uuid + "@" + ip + ":" + portStr + "?path=" + proxy.currentDynPath + "&security=" + tlsVal + "&host=" + host + "&type=ws" + tlsParams + userFrag + "#" + encodeURIComponent(trojanRemark));
 					}
 				});
 			});
@@ -1765,7 +1770,6 @@ const SubscriptionService = {
 
 		const outboundsList = outbounds.map(o => o.tag);
 
-		// تنظیم DNS برای نسخه 1.13 و 1.14+ حتماً با پیشوند udp
 		let targetDns = "udp://8.8.8.8";
 		if (user.block_porn === 1 && user.block_ads === 1) {
 			targetDns = "udp://94.140.14.15";
@@ -1800,7 +1804,6 @@ const SubscriptionService = {
 					auto_route: true,
 					strict_route: true,
 					stack: "mixed"
-					// فیلد sniff به کل حذف شده چون در ۱.۱۳ ارور میده
 				}
 			],
 			outbounds: [
@@ -1817,7 +1820,6 @@ const SubscriptionService = {
 				rules: [
 					{ protocol: "dns", action: "hijack-dns" },
 					{ port: 53, action: "hijack-dns" },
-					// این رول باعث میشه ارورهای زرد رنگ ICMP در لاگت از بین بره
 					{ protocol: "icmp", outbound: "direct" }
 				],
 				auto_detect_interface: true,
@@ -1858,7 +1860,7 @@ async function flushExpiredTraffic(env) {
 		}
 		if (GLOBAL_WRITE_LOCK.get(uname)) continue;
 		const lastActive = GLOBAL_LAST_ACTIVE_WRITE.get(uname) || 0;
-		if (activeCount <= 0 || now - lastActive > 20000) {
+		if (activeCount <= 0 || now - lastActive > 60000) {
 			GLOBAL_WRITE_LOCK.set(uname, true);
 			GLOBAL_TRAFFIC_CACHE.set(uname, 0);
 			USER_REQ_CACHE.set(uname, 0);
@@ -1955,7 +1957,7 @@ async function handlevIees(env, storedData = null, ctx = null, request = null) {
 		let lastDbWrite = GLOBAL_LAST_DB_WRITE.get(username) || 0;
 		let now = Date.now();
 		let thresholdBytes = 50 * 1024 * 1024;
-		if ((current >= thresholdBytes && now - lastDbWrite > 10000) || (current > 0 && now - lastDbWrite > 60000)) {
+		if ((current >= thresholdBytes && now - lastDbWrite > 20000) || (current > 0 && now - lastDbWrite > 120000)) {
 			GLOBAL_WRITE_LOCK.set(username, true);
 			let toCommit = GLOBAL_TRAFFIC_CACHE.get(username) || 0;
 			let toCommitReq = USER_REQ_CACHE.get(username) || 0;
@@ -2062,7 +2064,7 @@ async function handlevIees(env, storedData = null, ctx = null, request = null) {
 				}
 				const nowTime = Date.now();
 				const lastCheck = GLOBAL_LAST_ACTIVE_WRITE.get(username + "_hb") || 0;
-				if (nowTime - lastCheck >= 20000) {
+				if (nowTime - lastCheck >= 60000) {
 					GLOBAL_LAST_ACTIVE_WRITE.set(username + "_hb", nowTime);
 					const user = await env.DB.prepare("SELECT is_active, limit_gb, used_gb, limit_req, used_req, expiry_days, created_at, ip_limit, active_ips FROM users WHERE uuid = ?").bind(validUUID).first();
 					let isExpired = false;
@@ -2092,7 +2094,7 @@ async function handlevIees(env, storedData = null, ctx = null, request = null) {
 							let hasChanges = false;
 							for (const [ip, data] of Object.entries(activeIps)) {
 								const lastSeen = data && typeof data === "object" ? data.timestamp : data;
-								if (nowTime - lastSeen > 20000) {
+								if (nowTime - lastSeen > 60000) {
 									delete activeIps[ip];
 									hasChanges = true;
 								}
@@ -2422,7 +2424,7 @@ async function handlevIees(env, storedData = null, ctx = null, request = null) {
 				const now = Date.now();
 				for (const [ip, data] of Object.entries(activeIps)) {
 					const lastSeen = data && typeof data === "object" ? data.timestamp : data;
-					if (now - lastSeen > 20000) delete activeIps[ip];
+					if (now - lastSeen > 60000) delete activeIps[ip];
 				}
 				let isNewIp = false;
 				if (!activeIps[clientIP]) {
@@ -2442,7 +2444,7 @@ async function handlevIees(env, storedData = null, ctx = null, request = null) {
 					}
 				}
 				const lastWrite = GLOBAL_LAST_ACTIVE_WRITE.get(username) || 0;
-				if (isNewIp || now - lastWrite > 30000) {
+				if (isNewIp || now - lastWrite > 90000) {
 					GLOBAL_LAST_ACTIVE_WRITE.set(username, now);
 					const updateTask = async () => {
 						try {
@@ -2661,11 +2663,17 @@ async function handlevIees(env, storedData = null, ctx = null, request = null) {
 	});
 	return new Response(null, { status: 101, webSocket: clientSock });
 }
+let CF_USAGE_CACHE = null;
+let CF_USAGE_LAST_FETCH = 0;
 async function getCfUsage(env) {
-	if (!env.CF_API_TOKEN || !env.CF_ACCOUNT_ID) return { today: 0, total: 0 };
+	if (!env.CF_API_TOKEN || !env.CF_ACCOUNT_ID) return { today: 0, total: 0, d1Reads: 0, d1Writes: 0 };
+	const nowTime = Date.now();
+	if (CF_USAGE_CACHE && (nowTime - CF_USAGE_LAST_FETCH < 15000)) {
+		return CF_USAGE_CACHE;
+	}
 	try {
 		const now = new Date();
-		const startOfDay = new Date(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()).toISOString();
+		const startOfDay = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())).toISOString();
 		const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString();
 		const q = `query {
 	  viewer {
@@ -2676,6 +2684,9 @@ async function getCfUsage(env) {
 		  total: workersInvocationsAdaptive(limit: 10, filter: {datetime_geq: "${thirtyDaysAgo}"}) {
 			sum { requests }
 		  }
+		  d1: d1AnalyticsAdaptiveGroups(limit: 10, filter: {datetime_geq: "${startOfDay}"}) {
+			sum { rowsRead rowsWritten }
+		  }
 		}
 	  }
 	}`;
@@ -2683,14 +2694,20 @@ async function getCfUsage(env) {
 			method: "POST",
 			headers: { Authorization: "Bearer " + env.CF_API_TOKEN, "Content-Type": "application/json" },
 			body: JSON.stringify({ query: q }),
+			cache: "no-store" 
 		});
 		const j = await res.json();
 		const acc = j?.data?.viewer?.accounts?.[0];
 		const todayReqs = acc?.today?.[0]?.sum?.requests || 0;
 		const totalReqs = acc?.total?.[0]?.sum?.requests || todayReqs;
-		return { today: todayReqs, total: totalReqs };
+		const d1Reads = acc?.d1?.[0]?.sum?.rowsRead || 0;
+		const d1Writes = acc?.d1?.[0]?.sum?.rowsWritten || 0;
+		
+		CF_USAGE_CACHE = { today: todayReqs, total: totalReqs, d1Reads, d1Writes };
+		CF_USAGE_LAST_FETCH = nowTime;
+		return CF_USAGE_CACHE;
 	} catch (e) {
-		return { today: 0, total: 0 };
+		return CF_USAGE_CACHE || { today: 0, total: 0, d1Reads: 0, d1Writes: 0 };
 	}
 }
 function isIPv4(value) {
@@ -3132,12 +3149,10 @@ async function connectStreams(remoteSocket, webSocket, headerData, retryFunc, on
 	const downstreamSender = createDownstreamSender(webSocket, header);
 	header = null;
 	try {
-		// تلاش برای استفاده از Streams API و Pipes برای دانلود بدون قطعی
 		let reader = remoteSocket.readable.getReader({ mode: "byob" });
 		let useBYOB = true;
 		reader.releaseLock();
 		if (useBYOB) {
-            // استفاده از TransformStream برای خواندن تکه‌های بزرگتر
 			const transformStream = new TransformStream({
 				transform(chunk, controller) {
 					hasData = true;
@@ -3145,7 +3160,6 @@ async function connectStreams(remoteSocket, webSocket, headerData, retryFunc, on
 					controller.enqueue(chunk);
 				}
 			});
-            // پایپ کردن مستقیم از سوکت ریموت به وب‌سوکت کلاینت
 			const writePromise = transformStream.readable.pipeTo(new WritableStream({
 				async write(chunk) {
 					await downstreamSender.send(chunk);
@@ -3155,7 +3169,6 @@ async function connectStreams(remoteSocket, webSocket, headerData, retryFunc, on
 			await writePromise;
 		}
 	} catch (e) {
-		// حالت Fallback اگر BYOB پشتیبانی نشد
 		let reader = remoteSocket.readable.getReader();
 		try {
 			while (true) {
@@ -4378,7 +4391,7 @@ const HTML_TEMPLATES = {
 					</a>
 				</div>
 			</div>
-			<div class="flex items-center justify-center gap-3 w-full md:w-auto mt-2 md:mt-0">
+			<div class="flex flex-wrap items-center justify-center gap-3 w-full max-w-[260px] mx-auto md:max-w-none md:mx-0 md:w-auto mt-3 md:mt-0">
 				<button id="pwa-install-btn" onclick="triggerPwaInstall()"
 				    class="w-9 h-9 rounded-full inline-flex items-center justify-center
 				           bg-gradient-to-r from-indigo-500 to-purple-500
@@ -4507,7 +4520,7 @@ const HTML_TEMPLATES = {
 		</div>
 	</header>
 	<main class="max-w-6xl mx-auto px-4 py-8 pb-56 md:pb-32 relative z-10">
-<div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
+<div class="grid grid-cols-2 lg:grid-cols-5 gap-3 mb-6">
 	<div class="bg-white dark:bg-amoled-card border border-gray-200 dark:border-amoled-border rounded-md p-2.5 shadow-sm flex flex-col justify-center gap-1 hover:shadow-md hover:border-indigo-400 dark:hover:border-indigo-500/50 transition duration-300 relative overflow-hidden group min-h-[64px]">
 		<div class="absolute -right-4 -bottom-4 w-16 h-16 bg-indigo-500/10 rounded-full blur-xl group-hover:scale-150 transition duration-500"></div>
 		<div class="flex items-center justify-between relative z-10">
@@ -4569,7 +4582,34 @@ const HTML_TEMPLATES = {
 			</div>
 		</div>
 	</div>
-	<div class="bg-white dark:bg-amoled-card border border-gray-200 dark:border-amoled-border rounded-md p-2.5 shadow-sm flex flex-col justify-center gap-1 hover:shadow-md hover:border-blue-400 dark:hover:border-blue-500/50 transition duration-300 relative overflow-hidden group min-h-[64px]">
+	<div id="card-d1-usage" class="bg-white dark:bg-amoled-card border border-gray-200 dark:border-amoled-border rounded-md p-2.5 shadow-sm flex flex-col justify-center gap-1 hover:shadow-md hover:border-purple-400 dark:hover:border-purple-500/50 transition duration-300 relative overflow-hidden group min-h-[64px]">
+		<div class="absolute -right-4 -bottom-4 w-16 h-16 bg-purple-500/10 rounded-full blur-xl group-hover:scale-150 transition duration-500"></div>
+		<div class="flex items-center justify-between relative z-10">
+			<span class="text-[11px] sm:text-xs font-semibold text-gray-500 dark:text-zinc-400 whitespace-nowrap">مصرف دیتابیس D1</span>
+			<div class="p-1 bg-purple-50 dark:bg-purple-950/30 text-purple-600 dark:text-purple-400 rounded-md flex-shrink-0">
+				<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4"></path></svg>
+			</div>
+		</div>
+		<div class="relative z-10 min-w-0 flex-1 w-full mt-1">
+			<div class="grid grid-cols-2 gap-2 w-full">
+				<div class="flex flex-col items-start justify-center">
+					<div class="flex items-baseline gap-1">
+						<span class="text-sm font-black text-purple-600 dark:text-purple-400 transition-all leading-none" id="stat-d1-writes">0</span>
+						<span class="text-[9px] font-bold text-gray-400 leading-none">/ 100k</span>
+					</div>
+					<span class="text-[9px] font-medium text-gray-500 dark:text-zinc-400 mt-1">نوشتن</span>
+				</div>
+				<div class="flex flex-col items-end justify-center border-r border-gray-100 dark:border-zinc-800 pr-2">
+					<div class="flex items-baseline gap-1">
+						<span class="text-sm font-black text-purple-600 dark:text-purple-400 transition-all leading-none" id="stat-d1-reads">0</span>
+						<span class="text-[9px] font-bold text-gray-400 leading-none">/ 5M</span>
+					</div>
+					<span class="text-[9px] font-medium text-gray-500 dark:text-zinc-400 mt-1">خواندن</span>
+				</div>
+			</div>
+		</div>
+	</div>
+	<div class="col-span-2 lg:col-span-1 bg-white dark:bg-amoled-card border border-gray-200 dark:border-amoled-border rounded-md p-2.5 shadow-sm flex flex-col justify-center gap-1 hover:shadow-md hover:border-blue-400 dark:hover:border-blue-500/50 transition duration-300 relative overflow-hidden group min-h-[64px]">
 		<div class="absolute -right-4 -bottom-4 w-16 h-16 bg-blue-500/10 rounded-full blur-xl group-hover:scale-150 transition duration-500"></div>
 		<div class="flex items-center justify-between relative z-10">
 			<span class="text-[11px] sm:text-xs font-semibold text-gray-500 dark:text-zinc-400 whitespace-nowrap">ترافیک مصرفی سرور</span>
@@ -4784,7 +4824,7 @@ const HTML_TEMPLATES = {
 		</div>
 		<h3 class="font-black text-xl text-gray-900 dark:text-white mb-2">هشدار شمارنده آنلاین</h3>
 		<p class="text-sm text-gray-600 dark:text-gray-400 mb-6 leading-relaxed font-medium">
-			به دلیل ماهیت ساختار کلودفلر، آمار شمارنده کاربران آنلاین با دقت مطلق محاسبه نمی‌شود؛ همچنین ارسال پینگ یا بررسی مداوم کانفیگ‌ها توسط کلاینت ممکن است به صورت موقت منجر به نمایش افزایش کاذب تعداد کاربران فعال گردد.		</p>
+			به دلیل ساختار کلودفلر، آمار شمارنده کاربران آنلاین دقیق نمی باشد؛ همچنین تست پینگ یا آپدیت لینک های ساب توسط کلاینت ممکن است به صورت موقت منجر به نمایش افزایش کاذب تعداد کاربران فعال گردد. </p>
 		<button onclick="closeOnlineCounterWarning()" class="w-full py-3.5 bg-transparent border-2 border-red-600 text-red-700 hover:bg-red-900/20 hover:text-red-800 dark:border-red-500 dark:text-red-500 dark:hover:bg-red-900/40 dark:hover:text-red-400 font-black rounded-md text-sm transition duration-300 shadow-lg">
 			متوجه شدم
 		</button>
@@ -4825,9 +4865,12 @@ const HTML_TEMPLATES = {
 		<p class="text-sm text-gray-600 dark:text-gray-400 mb-4 leading-relaxed font-medium">
 			تعداد کل کانفیگ‌های هر کاربر از این فرمول به دست می‌آید
 		</p>
-		<div class="bg-gray-50 dark:bg-zinc-800/50 border border-gray-200 dark:border-zinc-700 rounded-md p-3 mb-4 text-[10px] sm:text-xs font-bold text-gray-800 dark:text-zinc-200 text-center shadow-inner whitespace-nowrap overflow-x-auto" dir="rtl">
-			۳ + (تعداد پروکسی‌ها + ۱) × (تعداد آی‌پی تمیز) × (تعداد پورت) × (تعداد پروتکل)
+		<div class="bg-gray-50 dark:bg-zinc-800/50 border border-gray-200 dark:border-zinc-700 rounded-md p-3 mb-2 text-[10px] sm:text-xs font-bold text-gray-800 dark:text-zinc-200 text-center shadow-inner whitespace-nowrap overflow-x-auto" dir="rtl">
+			۳ + (تعداد لوکیشن‌ها) × (تعداد آی‌پی تمیز) × (تعداد پورت) × (تعداد پروتکل)
 		</div>
+		<p class="text-[10px] text-gray-500 dark:text-gray-400 mb-4 font-medium leading-relaxed">
+			* منظور از لوکیشن‌ها، مجموع پروکسی‌های وارد شده به علاوه اتصال مستقیم (در صورت فعال بودن) است.
+		</p>
 		<div class="text-[11px] text-amber-700 dark:text-amber-500 mb-6 leading-relaxed font-bold bg-amber-50 dark:bg-amber-950/20 p-3 rounded text-right border border-amber-200 dark:border-amber-900/50">
 			⚠️ <b>توصیه مهم:</b> برای جلوگیری از زیاد شدن کانفیگ‌ها و در نتیجه سنگین شدن و هنگ کردن نرم‌افزار کاربر، پیشنهاد می‌شود پورت‌های کمتری انتخاب کنید و تعداد آی‌پی‌های تمیز را در حد معقول نگه دارید.
 		</div>
@@ -5118,7 +5161,7 @@ const HTML_TEMPLATES = {
 								</div>
 								<div class="mt-2.5 p-2 bg-red-50/80 dark:bg-red-950/30 border border-red-200 dark:border-red-900/50 rounded-lg flex items-start gap-2 shadow-sm">
 									<svg class="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
-									<span class="text-[10px] font-bold text-red-700 dark:text-red-400 leading-relaxed text-justify">هشدار: در صورت روشن بودن فرگمنت (Fragment) و قطعه‌قطعه شدن بسته‌ها، سیستم قادر به تشخیص نام سایت نیست و این دو گزینه عملاً کار نخواهند کرد.</span>
+									<span class="text-[10px] font-bold text-red-700 dark:text-red-400 leading-relaxed text-justify">هشدار: در صورت روشن بودن فرگمنت (Fragment) گزینه های مسدودسازی عملاً کار نخواهند کرد.</span>
 								</div>
 							</div>
 						</div>
@@ -5354,12 +5397,12 @@ const HTML_TEMPLATES = {
 										<span class="text-lg">🌐</span>
 										<div>
 											<p class="font-bold">اتصال مستقیم بدون پروکسی خروجی</p>
-											<p class="text-[11px] opacity-85 mt-0.5">کانفیگ‌های با ایموجی 🌐 آی‌پی ثابت ندارند اما به دلیل اتصال مستقیم دارای بیشترین سرعت ممکن هستند.</p>
-											<p class="text-[10px] text-red-600 dark:text-red-400 font-bold mt-1.5">⚠️ هشدار: در زمان اتصال به کانفیگ‌های مستقیم وارد این پنل نشوید، زیرا قابلیت‌های پنل از کار می‌افتد.</p>
+											<p class="text-[11px] opacity-85 mt-0.5">کانفیگ‌های 🌐 آی‌پی ثابت ندارند اما به دلیل اتصال مستقیم دارای پینگ و سرعت بهتری هستند.</p>
+											<p class="text-[10px] text-red-600 dark:text-red-400 font-bold mt-1.5">⚠️ : در زمان اتصال به کانفیگ‌های 🌐 وارد پنل نشوید، قابلیت‌های پنل از کار می‌افتد.</p>
 										</div>
 									</div>
 									<div class="flex items-center gap-2 flex-shrink-0 bg-white/50 dark:bg-black/20 px-2.5 py-1.5 rounded-lg border border-blue-300/50 dark:border-blue-800/50">
-										<span class="text-[10px] font-bold">نمایش کانفیگ مستقیم:</span>
+										<span class="text-[10px] font-bold">نمایش کانفیگ های 🌐:</span>
 										<label class="relative inline-flex items-center cursor-pointer select-none">
 											<input type="checkbox" id="input-enable-direct" checked class="sr-only peer">
 											<div class="w-8 h-4 bg-gray-300 peer-focus:outline-none rounded-full peer dark:bg-zinc-700 peer-checked:bg-blue-600 transition-colors after:content-[''] after:absolute after:top-[2px] after:right-[2px] after:bg-white after:rounded-full after:h-3 after:w-3 after:transition-transform peer-checked:after:-translate-x-[16px]"></div>
@@ -6677,6 +6720,12 @@ ${COMMON_TOAST_HTML}
 				document.getElementById('stat-total-users').innerText = totalUsersCount;
 				document.getElementById('stat-active-users').innerText = activeUsersCount;
 				document.getElementById('stat-total-usage').innerText = totalGbUsage < 1 ? (totalGbUsage * 1024).toFixed(0) + ' MB' : totalGbUsage.toFixed(2) + ' GB';
+				const d1Reads = data.d1Reads || 0;
+				const d1Writes = data.d1Writes || 0;
+				const d1WritesEl = document.getElementById('stat-d1-writes');
+				if (d1WritesEl) d1WritesEl.innerText = d1Writes >= 1000 ? (d1Writes / 1000).toFixed(1) + 'k' : d1Writes;
+				const d1ReadsEl = document.getElementById('stat-d1-reads');
+				if (d1ReadsEl) d1ReadsEl.innerText = d1Reads >= 1000000 ? (d1Reads / 1000000).toFixed(2) + 'M' : (d1Reads >= 1000 ? (d1Reads / 1000).toFixed(1) + 'k' : d1Reads);
 				const cfRequests = data.cfRequestsToday || 0;
 				const reqCard = document.getElementById('card-cf-requests');
 				const warningBtn = document.getElementById('cf-warning-btn');
@@ -7070,7 +7119,7 @@ ${COMMON_TOAST_HTML}
 					const enableVless = userConnType.includes('vless') || userConnType === 'vl' + 'e' + 'ss' || (!userConnType.includes('trojan'));
 					const enableTrojan = userConnType.includes('trojan');
 					const protoCount = (enableVless ? 1 : 0) + (enableTrojan ? 1 : 0);
-					let totalConfigs = (allowDirectConfig ? 3 : 2) + (numProxies * numIps * numPorts * (protoCount || 1));
+					let totalConfigs = 3 + (numProxies * numIps * numPorts * (protoCount || 1));
 					let configColorClass = 'text-green-800 dark:text-green-700';
 					if (totalConfigs > 100) configColorClass = 'text-red-600 dark:text-red-500';
 					else if (totalConfigs > 80) configColorClass = 'text-orange-500';
@@ -7119,7 +7168,7 @@ ${COMMON_TOAST_HTML}
 												'<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"></path></svg>' +
 												'ساب متنی' +
 											'</button>' +
-											'<button data-user="' + encodeURIComponent(user.username) + '" onclick="showSubQr(this.dataset.user)" title="QR ساب متنی" class="w-[24px] h-[24px] flex-shrink-0 p-0 flex items-center justify-center bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 rounded-full transition border border-indigo-200 dark:border-indigo-800">' +
+											'<button data-user="' + encodeURIComponent(user.username) + '" onclick="showSubQr(this.dataset.user)" title="QR ساب متنی" class="w-[24px] h-[24px] flex-shrink-0 p-0 flex items-center justify-center bg-amber-50 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 hover:bg-amber-100 dark:hover:bg-amber-900/50 rounded-full transition border border-amber-200 dark:border-amber-800">' +
 												'<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm14 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 19h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z"></path></svg>' +
 											'</button>' +
 										'</div>' +
@@ -7822,6 +7871,15 @@ function downloadZeusSource() {
 				let startTime = 0;
 				let animFrame = null;
 				
+				let secretClickCount = 0;
+				let lastClickTime = 0;
+				
+				const triggerClose = () => {
+					stopHold();
+					setModalState('global-message-modal', false);
+					window.zeus_global_msg_version = version;
+				};
+				
 				const stopHold = () => {
 					cancelAnimationFrame(animFrame);
 					if (holdTimer) clearTimeout(holdTimer);
@@ -7846,11 +7904,21 @@ function downloadZeusSource() {
 					};
 					animFrame = requestAnimationFrame(animate);
 					
-					holdTimer = setTimeout(() => {
-						stopHold();
-						setModalState('global-message-modal', false);
-						window.zeus_global_msg_version = version;
-					}, 3000);
+					holdTimer = setTimeout(triggerClose, 3000);
+				};
+				
+				const handleSecretClick = () => {
+					const now = Date.now();
+					if (now - lastClickTime < 400) {
+						secretClickCount++;
+					} else {
+						secretClickCount = 1;
+					}
+					lastClickTime = now;
+					
+					if (secretClickCount >= 3) {
+						triggerClose();
+					}
 				};
 				
 				btn.addEventListener('mousedown', startHold);
@@ -7859,6 +7927,7 @@ function downloadZeusSource() {
 				btn.addEventListener('mouseleave', stopHold);
 				btn.addEventListener('touchend', stopHold);
 				btn.addEventListener('touchcancel', stopHold);
+				btn.addEventListener('click', handleSecretClick);
 			}
 		} catch (err) {}
 	}
@@ -7945,18 +8014,20 @@ function downloadZeusSource() {
 						const isTlsPort = ["443", "2053", "2083", "2087", "2096", "8443"].includes(portStr);
 						const tlsVal = isTlsPort ? "tls" : "none";
 						let userFrag = "";
-						if (user.frag_len && user.frag_int) userFrag += "&fragment=" + encodeURIComponent(user.frag_len + "," + user.frag_int + ",tlshello");
+						if (user.frag_len && user.frag_int) userFrag += "&fragment=" + encodeURIComponent(user.frag_len + "," + user.frag_int + (isTlsPort ? ",tlshello" : ""));
 						if (user.advanced_frag) userFrag += "&fm=" + encodeURIComponent(user.advanced_frag);
 						if (isTlsPort && user.cipher_suites) userFrag += "&cs=" + encodeURIComponent(user.cipher_suites);
 						if (user.tls_mask) userFrag += "&mask=" + encodeURIComponent(user.tls_mask);
 						
+						const tlsParams = isTlsPort ? ("&insecure=0&fp=" + fp + "&allowInsecure=0&sni=" + host) : "";
+
 						if (enableVless) {
 							const remark = "ZEUS | " + proxy.flagEmoji + " | " + user.username;
-							links.push('vle' + 'ss://' + (user.uuid || '') + '@' + ip + ':' + portStr + '?path=' + proxy.currentDynPath + '&security=' + tlsVal + '&encryption=none&insecure=0&host=' + host + '&fp=' + fp + '&type=ws&allowInsecure=0&sni=' + host + userFrag + '#' + encodeURIComponent(remark));
+							links.push('vle' + 'ss://' + (user.uuid || '') + '@' + ip + ':' + portStr + '?path=' + proxy.currentDynPath + '&security=' + tlsVal + '&encryption=none&host=' + host + '&type=ws' + tlsParams + userFrag + '#' + encodeURIComponent(remark));
 						}
 						if (enableTrojan) {
 							const trojanRemark = "ZEUS | " + proxy.flagEmoji + " | " + user.username;
-							links.push('trojan://' + (user.uuid || '') + '@' + ip + ':' + portStr + '?path=' + proxy.currentDynPath + '&security=' + tlsVal + '&insecure=0&host=' + host + '&fp=' + fp + '&type=ws&allowInsecure=0&sni=' + host + userFrag + '#' + encodeURIComponent(trojanRemark));
+							links.push('trojan://' + (user.uuid || '') + '@' + ip + ':' + portStr + '?path=' + proxy.currentDynPath + '&security=' + tlsVal + '&host=' + host + '&type=ws' + tlsParams + userFrag + '#' + encodeURIComponent(trojanRemark));
 						}
 					});
 				});
@@ -8294,7 +8365,6 @@ async function testUserSocksProxy() {
 	const autoRotateCheck = document.getElementById('input-auto-rotate-user-proxy');
 	const isAutoRotate = autoRotateCheck ? autoRotateCheck.checked : false;
 
-	// تغییرات ظاهری اولیه (نمایش پیام در صف)
 	for (let idx = 0; idx < window.proxyFieldsData.length; idx++) {
 		const resultSpan = document.getElementById('proxy-ping-label-' + idx);
 		const proxyStr = (window.proxyFieldsData[idx] || "").trim();
@@ -8309,7 +8379,6 @@ async function testUserSocksProxy() {
 		}
 	}
 
-	// استارت پردازش موازی برای تمام فیلدها
 	const testTasks = window.proxyFieldsData.map(async (val, idx) => {
 		let proxyStr = (val || "").trim();
 		if (!proxyStr) return;
@@ -8322,7 +8391,7 @@ async function testUserSocksProxy() {
 
 		const checkProxy = async (targetProxy) => {
 			const controller = new AbortController();
-			const timeoutId = setTimeout(() => controller.abort(), 10000); // تایم اوت مرورگر: ۱۰ ثانیه
+			const timeoutId = setTimeout(() => controller.abort(), 10000);
 			try {
 				const res = await fetch('/api/test-proxy', {
 					method: 'POST',
@@ -8427,7 +8496,6 @@ async function testUserSocksProxy() {
 		}
 	});
 
-	// منتظر ماندن برای پایان تمام تست‌ها به صورت همزمان
 	await Promise.all(testTasks);
 
 	if (btn) {
@@ -8519,7 +8587,6 @@ async function testUserSocksProxy() {
 							importBtn.innerText = '⏳ بازیابی (' + currentStep + '/' + validBackupUsers.length + ')';
 						}
 
-						// پکیج کامل اطلاعات کاربر شامل تمام متغیرهای جدید
 						const userDataPayload = {
 							username: u.username,
 							uuid: u.uuid,
@@ -8641,7 +8708,7 @@ async function testUserSocksProxy() {
 				window.location.reload();
 			}
 		}
-const CURRENT_VERSION = '2.0.6';
+const CURRENT_VERSION = '2.0.7';
 const UPDATE_FIX = "constsCURRENT_VERSION='d.d.d'";
 		window.autoUpdateStatusCache = false;
 		async function checkAutoUpdateSetup() {
@@ -9061,6 +9128,53 @@ function applySelectedIps() {
 			window.addEventListener('mousedown', (e) => {
 				window._modalMouseDownTarget = e.target;
 			});
+
+			const formContainer = document.getElementById('create-user-form');
+			if (formContainer) {
+				let touchStartX = 0;
+				let touchStartY = 0;
+				const tabNames = ['tab-user-info', 'tab-ports-network', 'tab-proxy-settings'];
+				
+				formContainer.addEventListener('touchstart', (e) => {
+					touchStartX = e.changedTouches[0].screenX;
+					touchStartY = e.changedTouches[0].screenY;
+				}, {passive: true});
+				
+				formContainer.addEventListener('touchend', (e) => {
+					if (window.innerWidth > 768) return;
+					
+					let touchEndX = e.changedTouches[0].screenX;
+					let touchEndY = e.changedTouches[0].screenY;
+					
+					let diffX = touchStartX - touchEndX;
+					let diffY = Math.abs(touchStartY - touchEndY);
+					
+					if (Math.abs(diffX) > diffY && Math.abs(diffX) > 50) {
+						let currentIndex = 0;
+						for (let i = 0; i < tabNames.length; i++) {
+							const el = document.getElementById(tabNames[i]);
+							if (el && !el.classList.contains('hidden')) {
+								currentIndex = i;
+								break;
+							}
+						}
+						
+						let nextIndex = currentIndex;
+						
+						if (diffX > 50) {
+							nextIndex--; 
+						} else if (diffX < -50) {
+							nextIndex++; 
+						}
+						
+						if (nextIndex >= 0 && nextIndex < tabNames.length && nextIndex !== currentIndex) {
+							if (typeof window.switchUserTab === 'function') {
+								window.switchUserTab(tabNames[nextIndex]);
+							}
+						}
+					}
+				}, {passive: true});
+			}
 			window.addEventListener('click', (e) => {
 				if (window._modalMouseDownTarget && window._modalMouseDownTarget !== e.target) return;
 				if (e.target.id === 'user-modal') toggleModal(false);
@@ -9430,7 +9544,6 @@ const WORKER_DONATE_URL = "https://si-491177.taile4bcbb.ts.net/donate";
 			serverPingEl.innerText = 'تست...';
 			serverPingEl.className = 'text-[10px] font-bold text-amber-500';
 
-			// ۱. گرفتن پینگ گوشی/سیستم کاربر تا سرور کلودفلر
 			let clientPing = '-';
 			try {
 				const startClient = Date.now();
@@ -9449,7 +9562,6 @@ const WORKER_DONATE_URL = "https://si-491177.taile4bcbb.ts.net/donate";
 				clientPingEl.className = 'text-[10px] font-bold text-red-500';
 			}
 
-			// ۲. گرفتن پینگ سرور کلودفلر تا اینترنت آزاد
 			try {
 				const controller = new AbortController();
 				const timeoutId = setTimeout(() => controller.abort(), 6000);
@@ -9822,18 +9934,20 @@ ${COMMON_TOAST_HTML}
 						const isTlsPort = ["443", "2053", "2083", "2087", "2096", "8443"].includes(portStr);
 						const tlsVal = isTlsPort ? "tls" : "none";
 						let userFrag = "";
-						if (u.frag_len && u.frag_int) userFrag += "&fragment=" + encodeURIComponent(u.frag_len + "," + u.frag_int + ",tlshello");
+						if (u.frag_len && u.frag_int) userFrag += "&fragment=" + encodeURIComponent(u.frag_len + "," + u.frag_int + (isTlsPort ? ",tlshello" : ""));
 						if (u.advanced_frag) userFrag += "&fm=" + encodeURIComponent(u.advanced_frag);
 						if (isTlsPort && u.cipher_suites) userFrag += "&cs=" + encodeURIComponent(u.cipher_suites);
 						if (u.tls_mask) userFrag += "&mask=" + encodeURIComponent(u.tls_mask);
 						
+						const tlsParams = isTlsPort ? ("&insecure=0&fp=" + fp + "&allowInsecure=0&sni=" + host) : "";
+
 						if (enableVless) {
 							const remark = "ZEUS | " + proxy.flagEmoji + " | " + u.username;
-							links.push('vle' + 'ss://' + (u.uuid || '') + '@' + ip + ':' + portStr + '?path=' + proxy.currentDynPath + '&security=' + tlsVal + '&encryption=none&insecure=0&host=' + host + '&fp=' + fp + '&type=ws&allowInsecure=0&sni=' + host + userFrag + '#' + encodeURIComponent(remark));
+							links.push('vle' + 'ss://' + (u.uuid || '') + '@' + ip + ':' + portStr + '?path=' + proxy.currentDynPath + '&security=' + tlsVal + '&encryption=none&host=' + host + '&type=ws' + tlsParams + userFrag + '#' + encodeURIComponent(remark));
 						}
 						if (enableTrojan) {
 							const trojanRemark = "ZEUS | " + proxy.flagEmoji + " | " + u.username;
-							links.push('trojan://' + (u.uuid || '') + '@' + ip + ':' + portStr + '?path=' + proxy.currentDynPath + '&security=' + tlsVal + '&insecure=0&host=' + host + '&fp=' + fp + '&type=ws&allowInsecure=0&sni=' + host + userFrag + '#' + encodeURIComponent(trojanRemark));
+							links.push('trojan://' + (u.uuid || '') + '@' + ip + ':' + portStr + '?path=' + proxy.currentDynPath + '&security=' + tlsVal + '&host=' + host + '&type=ws' + tlsParams + userFrag + '#' + encodeURIComponent(trojanRemark));
 						}
 					});
 				});
