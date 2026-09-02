@@ -399,6 +399,13 @@ export default {
 				headers: { "Content-Type": "text/html; charset=utf-8" },
 			});
 		} catch (err) {
+			let msg = err.message || "";
+			if (msg.toLowerCase().includes("d1") && (msg.toLowerCase().includes("limit") || msg.toLowerCase().includes("exceeded") || msg.toLowerCase().includes("daily row"))) {
+				return new Response(JSON.stringify({ error: "سهمیه دیتابیس شما تمام شده و ساعت 3:30 درست میشه" }), { 
+					status: 500, 
+					headers: { "Content-Type": "application/json; charset=utf-8" } 
+				});
+			}
 			return new Response("Internal Server Error", { status: 500 });
 		}
 	},
@@ -3993,7 +4000,10 @@ const COMMON_TOAST_JS = `
 			}, 3000);
 		}
 		window.alert = function(message) {
-			const msgStr = message ? message.toString() : '';
+			let msgStr = message ? message.toString() : '';
+			if (msgStr.toLowerCase().includes('d1') && (msgStr.toLowerCase().includes('limit') || msgStr.toLowerCase().includes('exceeded') || msgStr.toLowerCase().includes('daily row'))) {
+				msgStr = '❌ سهمیه دیتابیس (D1) شما تمام شده و ساعت 3:30 درست میشه';
+			}
 			if (msgStr.includes('خطا') || msgStr.includes('⚠️') || msgStr.includes('❌')) {
 				showToast(msgStr, 'error');
 			} else {
@@ -6684,6 +6694,17 @@ ${COMMON_TOAST_HTML}
 		}
 		function renderUsersUI(data) {
 			try {
+				if (data.error) {
+					let errorText = data.error;
+					if (errorText.toLowerCase().includes('d1') && (errorText.toLowerCase().includes('limit') || errorText.toLowerCase().includes('exceeded'))) {
+						errorText = 'سهمیه دیتابیس شما تمام شده و ساعت 3:30 درست میشه';
+					}
+					document.getElementById('loading-state').innerHTML = '<span class="text-red-500 font-bold px-4 py-2 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg inline-block">❌ ' + errorText + '</span>';
+					document.getElementById('loading-state').classList.remove('hidden');
+					document.getElementById('users-table-container').classList.add('hidden');
+					document.getElementById('empty-state').classList.add('hidden');
+					return;
+				}
 				const users = data.users || [];
 				window.allUsers = users;
 				const serverTime = data.serverTime || Date.now();
@@ -9082,6 +9103,10 @@ function applySelectedIps() {
 				window.startRefreshInterval(ms);
 				showToast('نرخ رفرش پـنـل تغییر کرد');
 			};
+			if (!localStorage.getItem('zeus_rate_migrated_to_5s')) {
+				localStorage.setItem('zeus_refresh_rate', '5000');
+				localStorage.setItem('zeus_rate_migrated_to_5s', 'true');
+			}
 			const savedRate = localStorage.getItem('zeus_refresh_rate');
 			const initialRate = savedRate ? parseInt(savedRate, 10) : 5000;
 			const selectEl = document.getElementById('refresh-rate-select');
