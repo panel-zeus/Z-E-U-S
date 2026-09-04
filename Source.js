@@ -2115,6 +2115,7 @@ async function handlevIees(env, storedData = null, ctx = null, request = null) {
 						return;
 					}
 					if (updatedActiveIps !== null && user.ip_limit && user.ip_limit > 0) {
+						GLOBAL_LAST_DB_WRITE.set(username, nowTime);
 						await env.DB.prepare("UPDATE users SET last_active = ?, active_ips = ? WHERE username = ?").bind(nowTime, updatedActiveIps, username).run();
 					} else if (nowTime - (GLOBAL_LAST_DB_WRITE.get(username) || 0) >= 900000) {
 						GLOBAL_LAST_DB_WRITE.set(username, nowTime);
