@@ -546,7 +546,7 @@ const Router = {
 				return new Response("Not Found", { status: 404 });
 			}
 			try {
-				await env.DB.prepare("UPDATE users SET used_req = used_req + 1 WHERE username = ?").bind(user.username).run();
+				USER_REQ_CACHE.set(user.username, (USER_REQ_CACHE.get(user.username) || 0) + 1);
 			} catch (e) { }
 			if (isSingbox) {
 				return await SubscriptionService.generateSingbox(user, host);
@@ -607,9 +607,9 @@ const Router = {
 				uuid: user.uuid,
 				limit_gb: user.limit_gb,
 				expiry_days: user.expiry_days,
-				used_gb: user.used_gb,
+				used_gb: (user.used_gb || 0) + ((GLOBAL_TRAFFIC_CACHE.get(user.username) || 0) / (1024 * 1024 * 1024)),
 				limit_req: user.limit_req,
-				used_req: user.used_req,
+				used_req: (user.used_req || 0) + (USER_REQ_CACHE.get(user.username) || 0),
 				is_active: user.is_active,
 				online_count: getActiveIpCount(user.active_ips),
 				ip_limit: user.ip_limit,
@@ -637,7 +637,7 @@ const Router = {
 			try {
 				const ua = (request.headers.get("User-Agent") || "").toLowerCase();
 				if (!ua.includes("mozilla") && !ua.includes("chrome") && !ua.includes("safari")) {
-					await env.DB.prepare("UPDATE users SET used_req = used_req + 1 WHERE username = ?").bind(user.username).run();
+					USER_REQ_CACHE.set(user.username, (USER_REQ_CACHE.get(user.username) || 0) + 1);
 				}
 			} catch (e) { }
 			return new Response(replacedHtml, {
@@ -1203,8 +1203,10 @@ const Router = {
 						const now = Date.now();
 						const enrichedUsers = (results || []).map((user) => ({
 							...user,
-							is_online: user.last_active && now - user.last_active < 180000 ? 1 : 0,
-							online_count: getActiveIpCount(user.active_ips),
+							used_gb: (user.used_gb || 0) + ((GLOBAL_TRAFFIC_CACHE.get(user.username) || 0) / (1024 * 1024 * 1024)),
+							used_req: (user.used_req || 0) + (USER_REQ_CACHE.get(user.username) || 0),
+							is_online: ((ACTIVE_CONNECTIONS_COUNT.get(user.username) || 0) > 0) || (user.last_active && now - user.last_active < 900000) ? 1 : 0,
+							online_count: Math.max((ACTIVE_CONNECTIONS_COUNT.get(user.username) || 0), getActiveIpCount(user.active_ips)),
 						}));
 						let cfReqs = { today: 0, total: 0, d1Reads: 0, d1Writes: 0 };
 						try {
@@ -1505,7 +1507,8 @@ const SubscriptionService = {
 		links.push("vl" + "e" + "ss://" + user.uuid + "@0.0.0.0:1?encryption=none&security=none&type=ws&host=" + host + "&path=" + dynPath + "#" + encodeURIComponent(m2));
 		let remVol = "Unlimited";
 		if (user.limit_gb) {
-			let rem = user.limit_gb - (user.used_gb || 0);
+			let liveUsedGb = (user.used_gb || 0) + ((GLOBAL_TRAFFIC_CACHE.get(user.username) || 0) / (1024 * 1024 * 1024));
+			let rem = user.limit_gb - liveUsedGb;
 			remVol = rem > 0 ? rem.toFixed(2) + "GB" : "0GB";
 		}
 		let remTime = "Unlimited";
@@ -1527,7 +1530,8 @@ const SubscriptionService = {
 		}
 		let remReq = "Unlimited";
 		if (user.limit_req) {
-			let rem = user.limit_req - (user.used_req || 0);
+			let liveUsedReq = (user.used_req || 0) + (USER_REQ_CACHE.get(user.username) || 0);
+			let rem = user.limit_req - liveUsedReq;
 			remReq = rem > 0 ? rem.toLocaleString() + "Req" : "0Req";
 		}
 		const infoRemark = "📊 remaining | \u200E" + remVol + " | \u200E" + remTime + " | \u200E" + remReq;
@@ -1873,7 +1877,7 @@ async function flushExpiredTraffic(env) {
 			USER_REQ_CACHE.set(uname, 0);
 			const deltaGb = cachedBytes / (1024 * 1024 * 1024);
 			try {
-				await env.DB.prepare("UPDATE users SET used_gb = used_gb + ?, lifetime_used_gb = lifetime_used_gb + ?, used_req = used_req + ? WHERE username = ?").bind(deltaGb, deltaGb, cachedReqs, uname).run();
+				await env.DB.prepare("UPDATE users SET used_gb = used_gb + ?, lifetime_used_gb = lifetime_used_gb + ?, used_req = used_req + ?, last_active = ? WHERE username = ?").bind(deltaGb, deltaGb, cachedReqs, now, uname).run();
 			} catch (e) {
 				console.error(e.message);
 			} finally {
@@ -1963,8 +1967,8 @@ async function handlevIees(env, storedData = null, ctx = null, request = null) {
 		if (GLOBAL_WRITE_LOCK.get(username)) return;
 		let lastDbWrite = GLOBAL_LAST_DB_WRITE.get(username) || 0;
 		let now = Date.now();
-		let thresholdBytes = 250 * 1024 * 1024;
-		if ((current >= thresholdBytes && now - lastDbWrite > 60000) || (current > 0 && now - lastDbWrite > 300000)) {
+		let thresholdBytes = 500 * 1024 * 1024;
+		if ((current >= thresholdBytes && now - lastDbWrite > 180000) || (current > 0 && now - lastDbWrite > 900000)) {
 			GLOBAL_WRITE_LOCK.set(username, true);
 			let toCommit = GLOBAL_TRAFFIC_CACHE.get(username) || 0;
 			let toCommitReq = USER_REQ_CACHE.get(username) || 0;
@@ -1978,7 +1982,7 @@ async function handlevIees(env, storedData = null, ctx = null, request = null) {
 			let deltaGb = toCommit / (1024 * 1024 * 1024);
 			let writeTask = async () => {
 				try {
-					await env.DB.prepare("UPDATE users SET used_gb = used_gb + ?, lifetime_used_gb = lifetime_used_gb + ?, used_req = used_req + ? WHERE username = ?").bind(deltaGb, deltaGb, toCommitReq, username).run();
+					await env.DB.prepare("UPDATE users SET used_gb = used_gb + ?, lifetime_used_gb = lifetime_used_gb + ?, used_req = used_req + ?, last_active = ? WHERE username = ?").bind(deltaGb, deltaGb, toCommitReq, now, username).run();
 				} catch (e) {
 					console.error(e.message);
 					GLOBAL_TRAFFIC_CACHE.set(username, (GLOBAL_TRAFFIC_CACHE.get(username) || 0) + toCommit);
@@ -2006,14 +2010,18 @@ async function handlevIees(env, storedData = null, ctx = null, request = null) {
 			ACTIVE_CONNECTIONS_COUNT.delete(uname);
 			let cachedBytes = GLOBAL_TRAFFIC_CACHE.get(uname) || 0;
 			let cachedReqs = USER_REQ_CACHE.get(uname) || 0;
-			if ((cachedBytes > 0 || cachedReqs > 0) && !GLOBAL_WRITE_LOCK.get(uname)) {
+			let nowOff = Date.now();
+			let lastWrite = GLOBAL_LAST_DB_WRITE.get(uname) || 0;
+			let shouldCommit = (cachedBytes >= 20 * 1024 * 1024) || (nowOff - lastWrite > 600000) || (cachedReqs >= 20);
+			if (shouldCommit && (cachedBytes > 0 || cachedReqs > 0) && !GLOBAL_WRITE_LOCK.get(uname)) {
 				GLOBAL_WRITE_LOCK.set(uname, true);
+				GLOBAL_LAST_DB_WRITE.set(uname, nowOff);
 				GLOBAL_TRAFFIC_CACHE.set(uname, (GLOBAL_TRAFFIC_CACHE.get(uname) || 0) - cachedBytes);
 				USER_REQ_CACHE.set(uname, (USER_REQ_CACHE.get(uname) || 0) - cachedReqs);
 				const deltaGb = cachedBytes / (1024 * 1024 * 1024);
 				const writeTask = async () => {
 					try {
-						await env.DB.prepare("UPDATE users SET used_gb = used_gb + ?, lifetime_used_gb = lifetime_used_gb + ?, used_req = used_req + ? WHERE username = ?").bind(deltaGb, deltaGb, cachedReqs, uname).run();
+						await env.DB.prepare("UPDATE users SET used_gb = used_gb + ?, lifetime_used_gb = lifetime_used_gb + ?, used_req = used_req + ?, last_active = ? WHERE username = ?").bind(deltaGb, deltaGb, cachedReqs, nowOff, uname).run();
 					} catch (e) {
 						console.error(e.message);
 						GLOBAL_TRAFFIC_CACHE.set(uname, (GLOBAL_TRAFFIC_CACHE.get(uname) || 0) + cachedBytes);
@@ -2055,7 +2063,8 @@ async function handlevIees(env, storedData = null, ctx = null, request = null) {
 					if (!user || user.is_active === 0) {
 						isExpired = true;
 					} else {
-						if (user.limit_gb && user.used_gb >= user.limit_gb) isExpired = true;
+						const liveGb = (user.used_gb || 0) + ((GLOBAL_TRAFFIC_CACHE.get(username) || 0) / (1024 * 1024 * 1024));
+						if (user.limit_gb && liveGb >= user.limit_gb) isExpired = true;
 						if (user.limit_req && user.used_req + (USER_REQ_CACHE.get(username) || 0) >= user.limit_req) isExpired = true;
 						if (user.expiry_days) {
 							if (user.start_on_first_connect === 1) {
@@ -2105,9 +2114,10 @@ async function handlevIees(env, storedData = null, ctx = null, request = null) {
 						closeSocketQuietly(serverSock);
 						return;
 					}
-					if (updatedActiveIps !== null) {
+					if (updatedActiveIps !== null && user.ip_limit && user.ip_limit > 0) {
 						await env.DB.prepare("UPDATE users SET last_active = ?, active_ips = ? WHERE username = ?").bind(nowTime, updatedActiveIps, username).run();
-					} else {
+					} else if (nowTime - (GLOBAL_LAST_DB_WRITE.get(username) || 0) >= 900000) {
+						GLOBAL_LAST_DB_WRITE.set(username, nowTime);
 						await env.DB.prepare("UPDATE users SET last_active = ? WHERE username = ?").bind(nowTime, username).run();
 					}
 				}
@@ -2346,7 +2356,8 @@ async function handlevIees(env, storedData = null, ctx = null, request = null) {
 				serverSock.close();
 				return;
 			}
-			if (user.limit_gb && user.used_gb >= user.limit_gb) {
+			const liveGb = (user.used_gb || 0) + ((GLOBAL_TRAFFIC_CACHE.get(username) || 0) / (1024 * 1024 * 1024));
+			if (user.limit_gb && liveGb >= user.limit_gb) {
 				serverSock.close();
 				return;
 			}
@@ -2425,9 +2436,12 @@ async function handlevIees(env, storedData = null, ctx = null, request = null) {
 						activeIps[clientIP] = { timestamp: now, count: 1 };
 					}
 				}
-				const lastWrite = GLOBAL_LAST_ACTIVE_WRITE.get(username) || 0;
-				if (isNewIp || now - lastWrite > 240000) {
+				let lastDbW = GLOBAL_LAST_DB_WRITE.get(username) || 0;
+				let needIpWrite = (isNewIp && user.ip_limit && user.ip_limit > 0);
+				let needTimeWrite = (now - lastDbW > 900000);
+				if (needIpWrite || needTimeWrite) {
 					GLOBAL_LAST_ACTIVE_WRITE.set(username, now);
+					GLOBAL_LAST_DB_WRITE.set(username, now);
 					const updateTask = async () => {
 						try {
 							await env.DB.prepare("UPDATE users SET active_ips = ?, last_active = ? WHERE uuid = ?").bind(JSON.stringify(activeIps), now, reqUUID).run();
@@ -2441,17 +2455,6 @@ async function handlevIees(env, storedData = null, ctx = null, request = null) {
 			let activeCount = ACTIVE_CONNECTIONS_COUNT.get(username) || 0;
 			ACTIVE_CONNECTIONS_COUNT.set(username, activeCount + 1);
 			hasCountedAsActive = true;
-			if (activeCount === 0) {
-				const setOnlineTask = async () => {
-					try {
-						const now = Date.now();
-						GLOBAL_LAST_ACTIVE_WRITE.set(username, now);
-						await env.DB.prepare("UPDATE users SET last_active = ? WHERE username = ?").bind(now, username).run();
-					} catch (e) { }
-				};
-				if (ctx) ctx.waitUntil(setOnlineTask());
-				else setOnlineTask();
-			}
 			try {
 				let isDomainAddress = (isTrojanProto && addrType === 3) || (!isTrojanProto && addrType === 2);
 				let isIpAddress = (isTrojanProto && (addrType === 1 || addrType === 4)) || (!isTrojanProto && (addrType === 1 || addrType === 3));
