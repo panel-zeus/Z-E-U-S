@@ -1193,13 +1193,14 @@ const Router = {
 								const randomIps = getRandomIps(cachedIpsData, user.ip_operator || "all", user.ip_count || 20);
 								if (randomIps.length > 0) finalIps = randomIps.join("\n");
 							}
+							const currentOnlineCount = Math.max((ACTIVE_CONNECTIONS_COUNT.get(user.username) || 0), getActiveIpCount(user.active_ips));
 							return {
 								...user,
 								ips: finalIps,
 								used_gb: (user.used_gb || 0) + ((GLOBAL_TRAFFIC_CACHE.get(user.username) || 0) / (1024 * 1024 * 1024)),
 								used_req: (user.used_req || 0) + (USER_REQ_CACHE.get(user.username) || 0),
-								is_online: ((ACTIVE_CONNECTIONS_COUNT.get(user.username) || 0) > 0) || (user.last_active && now - user.last_active < 900000) ? 1 : 0,
-								online_count: Math.max((ACTIVE_CONNECTIONS_COUNT.get(user.username) || 0), getActiveIpCount(user.active_ips)),
+								is_online: currentOnlineCount > 0 ? 1 : 0,
+								online_count: currentOnlineCount,
 							};
 						});
 						let cfReqs = { today: 0, total: 0, d1Reads: 0, d1Writes: 0 };
