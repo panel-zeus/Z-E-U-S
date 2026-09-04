@@ -2087,24 +2087,37 @@ async function handlevIees(env, storedData = null, ctx = null, request = null) {
 								activeIps = JSON.parse(user.active_ips || "{}");
 							} catch (e) { }
 							let hasChanges = false;
+							let needsDbUpdateForTimestamp = false;
+							
 							for (const [ip, data] of Object.entries(activeIps)) {
 								const lastSeen = data && typeof data === "object" ? data.timestamp : data;
-								if (nowTime - lastSeen > 180000) {
+								if (nowTime - lastSeen > 180000 && ip !== clientIP) {
 									delete activeIps[ip];
 									hasChanges = true;
 								}
 							}
 							if (!activeIps[clientIP]) {
-								isIpLimitExpired = true;
+								activeIps[clientIP] = { timestamp: nowTime, count: 1 };
+								hasChanges = true;
 							} else {
-								const sortedIps = Object.keys(activeIps).sort((a, b) => {
-									const tA = typeof activeIps[a] === "object" ? activeIps[a].timestamp : activeIps[a];
-									const tB = typeof activeIps[b] === "object" ? activeIps[b].timestamp : activeIps[b];
-									return tB - tA;
-								});
-								if (user.ip_limit && user.ip_limit > 0 && sortedIps.indexOf(clientIP) >= user.ip_limit) isIpLimitExpired = true;
+								const currentData = activeIps[clientIP];
+								const lastSeen = typeof currentData === "object" ? currentData.timestamp : currentData;
+								if (nowTime - lastSeen > 150000) {
+									if (typeof activeIps[clientIP] === "object") {
+										activeIps[clientIP].timestamp = nowTime;
+									} else {
+										activeIps[clientIP] = { timestamp: nowTime, count: 1 };
+									}
+									needsDbUpdateForTimestamp = true;
+								}
 							}
-							if (hasChanges || isIpLimitExpired) updatedActiveIps = JSON.stringify(activeIps);
+							const sortedIps = Object.keys(activeIps).sort((a, b) => {
+								const tA = typeof activeIps[a] === "object" ? activeIps[a].timestamp : activeIps[a];
+								const tB = typeof activeIps[b] === "object" ? activeIps[b].timestamp : activeIps[b];
+								return tB - tA;
+							});
+							if (user.ip_limit && user.ip_limit > 0 && sortedIps.indexOf(clientIP) >= user.ip_limit) isIpLimitExpired = true;
+							if (hasChanges || needsDbUpdateForTimestamp || isIpLimitExpired) updatedActiveIps = JSON.stringify(activeIps);
 						}
 					}
 					if (isExpired) {
@@ -2118,7 +2131,7 @@ async function handlevIees(env, storedData = null, ctx = null, request = null) {
 						closeSocketQuietly(serverSock);
 						return;
 					}
-					if (updatedActiveIps !== null && user.ip_limit && user.ip_limit > 0) {
+					if (updatedActiveIps !== null) {
 						GLOBAL_LAST_DB_WRITE.set(username, nowTime);
 						await env.DB.prepare("UPDATE users SET last_active = ?, active_ips = ? WHERE username = ?").bind(nowTime, updatedActiveIps, username).run();
 					} else if (nowTime - (GLOBAL_LAST_DB_WRITE.get(username) || 0) >= 900000) {
@@ -2442,7 +2455,7 @@ async function handlevIees(env, storedData = null, ctx = null, request = null) {
 					}
 				}
 				let lastDbW = GLOBAL_LAST_DB_WRITE.get(username) || 0;
-				let needIpWrite = (isNewIp && user.ip_limit && user.ip_limit > 0);
+				let needIpWrite = isNewIp;
 				let needTimeWrite = (now - lastDbW > 900000);
 				if (needIpWrite || needTimeWrite) {
 					GLOBAL_LAST_ACTIVE_WRITE.set(username, now);
