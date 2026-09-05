@@ -130,11 +130,13 @@ async function replaceBrokenProxy(username, env, oldProxy) {
 	try {
 		if (GLOBAL_WRITE_LOCK.get(username + "_proxy_rotate")) return;
 		GLOBAL_WRITE_LOCK.set(username + "_proxy_rotate", true);
+		
 		const user = await env.DB.prepare("SELECT id, user_socks5, auto_rotate_user_proxy FROM users WHERE username = ?").bind(username).first();
 		if (!user || user.auto_rotate_user_proxy !== 1 || !user.user_socks5) {
 			GLOBAL_WRITE_LOCK.delete(username + "_proxy_rotate");
 			return;
 		}
+		
 		let proxyList = [];
 		let isArrayMode = false;
 		try {
@@ -147,6 +149,7 @@ async function replaceBrokenProxy(username, env, oldProxy) {
 		} catch (e) {
 			proxyList = [user.user_socks5];
 		}
+		
 		let matchIndex = -1;
 		for (let i = 0; i < proxyList.length; i++) {
 			let itemStr = typeof proxyList[i] === "object" && proxyList[i] !== null ? proxyList[i].proxy : proxyList[i];
@@ -159,53 +162,57 @@ async function replaceBrokenProxy(username, env, oldProxy) {
 			GLOBAL_WRITE_LOCK.delete(username + "_proxy_rotate");
 			return;
 		}
+		
 		let countryCode = typeof proxyList[matchIndex] === "object" && proxyList[matchIndex] !== null && proxyList[matchIndex].country ? proxyList[matchIndex].country : "all";
-		try {
-			const payload = new TextEncoder().encode("GET /json/?fields=countryCode HTTP/1.1\r\nHost: ip-api.com\r\nConnection: close\r\n\r\n");
-			const s = await connectProxy(oldProxy, "ip-api.com", 80, payload);
-			const reader = s.readable.getReader();
-			let resStr = "";
-			const dec = new TextDecoder();
-			const timeoutId = setTimeout(() => {
-				try {
-					s.close();
-				} catch (e) { }
-			}, 2000);
+		
+		if (countryCode === "all" || countryCode === "UN") {
 			try {
-				while (true) {
-					const res = await reader.read();
-					if (res.done || !res.value) break;
-					resStr += dec.decode(res.value, { stream: true });
-					if (resStr.includes("countryCode")) break;
-				}
-			} finally {
-				clearTimeout(timeoutId);
+				const payload = new TextEncoder().encode("GET /json/?fields=countryCode HTTP/1.1\r\nHost: ip-api.com\r\nConnection: close\r\n\r\n");
+				const s = await connectProxy(oldProxy, "ip-api.com", 80, payload);
+				const reader = s.readable.getReader();
+				let resStr = "";
+				const dec = new TextDecoder();
+				const timeoutId = setTimeout(() => {
+					try { s.close(); } catch (e) { }
+				}, 2000);
 				try {
-					s.close();
+					while (true) {
+						const res = await reader.read();
+						if (res.done || !res.value) break;
+						resStr += dec.decode(res.value, { stream: true });
+						if (resStr.includes("countryCode")) break;
+					}
+				} finally {
+					clearTimeout(timeoutId);
+					try { s.close(); } catch (e) { }
+				}
+				const jsonMatch = resStr.match(/\{[^}]*"countryCode"\s*:\s*"([^"]+)"[^}]*\}/);
+				if (jsonMatch && jsonMatch[1]) countryCode = jsonMatch[1];
+			} catch (e) { }
+			
+			if (countryCode === "all" || countryCode === "UN") {
+				try {
+					let remain = oldProxy.replace(/^(socks4|socks5|socks|http|https):\/\//i, "");
+					if (remain.includes("@")) remain = remain.substring(remain.lastIndexOf("@") + 1);
+					if (remain.startsWith("[")) remain = remain.substring(1, remain.indexOf("]"));
+					else if (remain.includes(":")) remain = remain.substring(0, remain.lastIndexOf(":"));
+					const geoRes = await fetch(`http://ip-api.com/json/${remain}?fields=countryCode`);
+					const geoData = await geoRes.json();
+					if (geoData && geoData.countryCode) countryCode = geoData.countryCode;
 				} catch (e) { }
 			}
-			const jsonMatch = resStr.match(/\{[^}]*"countryCode"\s*:\s*"([^"]+)"[^}]*\}/);
-			if (jsonMatch && jsonMatch[1]) countryCode = jsonMatch[1];
-		} catch (e) { }
-		if (countryCode === "all") {
-			try {
-				let remain = oldProxy.replace(/^(socks4|socks5|socks|http|https):\/\//i, "");
-				if (remain.includes("@")) remain = remain.substring(remain.lastIndexOf("@") + 1);
-				if (remain.startsWith("[")) remain = remain.substring(1, remain.indexOf("]"));
-				else if (remain.includes(":")) remain = remain.substring(0, remain.lastIndexOf(":"));
-				const geoRes = await fetch(`http://ip-api.com/json/${remain}?fields=countryCode`);
-				const geoData = await geoRes.json();
-				if (geoData && geoData.countryCode) countryCode = geoData.countryCode;
-			} catch (e) { }
 		}
+		
 		let newProxy = null;
-		const upperCountry = countryCode.toUpperCase();
+		let finalCountry = null;
+		const upperCountry = (countryCode || "ALL").toUpperCase();
 		const sources = [];
-		const isOldProxyVIP = oldProxy.includes("@");
+		const isOldProxyVIP = oldProxy.includes("@") || oldProxy.includes("t.me/");
+		
 		if (cachedVipCountries.length === 0 || Date.now() - lastVipCountriesFetch > 3600000) {
 			try {
 				const ghRes = await fetchWithFallback("vip-list", {
-					headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36" },
+					headers: { "User-Agent": "Mozilla/5.0" },
 				});
 				if (ghRes.ok) {
 					const files = await ghRes.json();
@@ -214,25 +221,29 @@ async function replaceBrokenProxy(username, env, oldProxy) {
 				}
 			} catch (e) { }
 		}
+		
 		let fallbackVIPs = cachedVipCountries.length > 0 ? [...cachedVipCountries] : ["DE", "US", "GB", "NL", "FR", "TR"];
 		for (let i = fallbackVIPs.length - 1; i > 0; i--) {
 			const j = Math.floor(Math.random() * (i + 1));
 			[fallbackVIPs[i], fallbackVIPs[j]] = [fallbackVIPs[j], fallbackVIPs[i]];
 		}
+		
 		if (upperCountry !== "ALL" && upperCountry !== "UN") {
-			sources.push({ url: `proxy_vip/${upperCountry}.txt`, type: "repo" });
+			sources.push({ url: `proxy_vip/${upperCountry}.txt`, type: "repo", country: upperCountry });
 		}
 		for (const fc of fallbackVIPs) {
 			if (fc !== upperCountry) {
-				sources.push({ url: `proxy_vip/${fc}.txt`, type: "repo" });
+				sources.push({ url: `proxy_vip/${fc}.txt`, type: "repo", country: fc });
 			}
 		}
+		
 		if (!isOldProxyVIP) {
 			if (upperCountry !== "ALL" && upperCountry !== "UN") {
-				sources.push({ url: `proxy/${upperCountry}.txt`, type: "repo" });
+				sources.push({ url: `proxy/${upperCountry}.txt`, type: "repo", country: upperCountry });
 			}
-			sources.push({ url: `proxy/ALL.txt`, type: "repo" });
+			sources.push({ url: `proxy/ALL.txt`, type: "repo", country: "ALL" });
 		}
+		
 		for (const src of sources) {
 			try {
 				const res = await fetchWithFallback(src.url);
@@ -242,12 +253,16 @@ async function replaceBrokenProxy(username, env, oldProxy) {
 					.split("\n")
 					.map((l) => l.trim())
 					.filter((l) => l.length > 5);
+					
 				if (lines.length > 0) {
 					for (let i = lines.length - 1; i > 0; i--) {
 						const j = Math.floor(Math.random() * (i + 1));
 						[lines[i], lines[j]] = [lines[j], lines[i]];
 					}
-					const testBatch = lines.slice(0, 3).flatMap((line) => {
+					
+					const testLimit = (src.country === upperCountry) ? 15 : 3;
+					
+					const testBatch = lines.slice(0, testLimit).flatMap((line) => {
 						if (line.match(/^(socks4|socks5|socks|http|https|tg):\/\//i) || line.includes("t.me/socks")) {
 							return [line];
 						}
@@ -255,56 +270,65 @@ async function replaceBrokenProxy(username, env, oldProxy) {
 						if (src.type === "http") return [`http://${line}`];
 						return [`socks5://${line}`, `http://${line}`];
 					});
+					
 					try {
 						newProxy = await Promise.any(
 							testBatch.map((p) => {
 								return new Promise(async (resolve, reject) => {
 									let sock = null;
 									const timeoutId = setTimeout(() => {
-										try {
-											sock && sock.close();
-										} catch (e) { }
+										try { sock && sock.close(); } catch (e) { }
 										reject(new Error("timeout"));
-									}, 3000);
+									}, 4000); 
 									try {
 										const payload = TEXT_ENCODER.encode("GET / HTTP/1.1\r\nHost: 1.1.1.1\r\nConnection: close\r\n\r\n");
 										sock = await connectProxy(p, "1.1.1.1", 80, payload);
 										const reader = sock.readable.getReader();
 										const res = await reader.read();
 										clearTimeout(timeoutId);
-										try {
-											sock.close();
-										} catch (e) { }
+										try { sock.close(); } catch (e) { }
 										if (res.done || !res.value) reject(new Error("empty"));
 										else resolve(p);
 									} catch (e) {
 										clearTimeout(timeoutId);
-										try {
-											sock && sock.close();
-										} catch (err) { }
+										try { sock && sock.close(); } catch (err) { }
 										reject(e);
 									}
 								});
-							}),
+							})
 						);
 					} catch (e) {
 						continue;
 					}
+					
 					if (newProxy) {
+						finalCountry = src.country; 
 						break;
 					}
 				}
 			} catch (e) { }
 		}
+		
 		if (newProxy) {
 			let finalProxyVal = newProxy;
 			if (isArrayMode) {
 				if (typeof proxyList[matchIndex] === "object" && proxyList[matchIndex] !== null) {
 					proxyList[matchIndex].proxy = newProxy;
+					if (finalCountry && finalCountry !== "ALL" && finalCountry !== "UN") {
+						proxyList[matchIndex].country = finalCountry;
+					}
 				} else {
-					proxyList[matchIndex] = newProxy;
+					if (finalCountry && finalCountry !== "ALL" && finalCountry !== "UN") {
+						proxyList[matchIndex] = { proxy: newProxy, country: finalCountry };
+					} else {
+						proxyList[matchIndex] = newProxy;
+					}
 				}
 				finalProxyVal = JSON.stringify(proxyList);
+			} else {
+				if (finalCountry && finalCountry !== "ALL" && finalCountry !== "UN") {
+					finalProxyVal = JSON.stringify([{ proxy: newProxy, country: finalCountry }]);
+				}
 			}
 			await env.DB.prepare("UPDATE users SET user_socks5 = ? WHERE id = ?").bind(finalProxyVal, user.id).run();
 		}
@@ -2669,10 +2693,14 @@ async function handlevIees(env, storedData = null, ctx = null, request = null) {
 }
 let CF_USAGE_CACHE = null;
 let CF_USAGE_LAST_FETCH = 0;
+let CF_USAGE_CACHE_DATE = ""; 
+
 async function getCfUsage(env) {
 	if (!env.CF_API_TOKEN || !env.CF_ACCOUNT_ID) return { today: 0, total: 0, d1Reads: 0, d1Writes: 0 };
 	const nowTime = Date.now();
-	if (CF_USAGE_CACHE && (nowTime - CF_USAGE_LAST_FETCH < 15000)) {
+	const todayStr = new Date().toISOString().split("T")[0];
+	
+	if (CF_USAGE_CACHE && (nowTime - CF_USAGE_LAST_FETCH < 15000) && CF_USAGE_CACHE_DATE === todayStr) {
 		return CF_USAGE_CACHE;
 	}
 	try {
@@ -2709,6 +2737,7 @@ async function getCfUsage(env) {
 		
 		CF_USAGE_CACHE = { today: todayReqs, total: totalReqs, d1Reads, d1Writes };
 		CF_USAGE_LAST_FETCH = nowTime;
+		CF_USAGE_CACHE_DATE = todayStr;
 		return CF_USAGE_CACHE;
 	} catch (e) {
 		return CF_USAGE_CACHE || { today: 0, total: 0, d1Reads: 0, d1Writes: 0 };
@@ -4664,7 +4693,16 @@ const HTML_TEMPLATES = {
 		<div class="flex items-center justify-between mb-4">
 			<h2 class="text-lg font-bold text-gray-800 dark:text-zinc-200">لیست کاربران</h2>
 			<div class="flex items-center gap-5">
-				<button onclick="quickCreateUser(this)" title="افزودن کاربر سریع (VIP)" class="p-2 rounded-full bg-indigo-50 dark:bg-indigo-950/40 border-2 border-indigo-500 dark:border-indigo-500 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 transition-all duration-300 text-indigo-600 dark:text-indigo-400 shadow-[0_0_15px_rgba(99,102,241,0.6)] hover:shadow-[0_0_25px_rgba(99,102,241,0.95)] hover:scale-125 active:scale-110 cursor-pointer inline-flex items-center justify-center relative group">
+				<button onclick="openRocketModal(this)" title="افزودن کاربر تک لوکیشن" class="p-2 rounded-full bg-orange-50 dark:bg-orange-950/40 border-2 border-orange-500 dark:border-orange-500 hover:bg-orange-100 dark:hover:bg-orange-900/60 transition-all duration-300 text-orange-600 dark:text-orange-400 shadow-[0_0_15px_rgba(249,115,22,0.6)] hover:shadow-[0_0_25px_rgba(249,115,22,0.95)] hover:scale-125 active:scale-110 cursor-pointer inline-flex items-center justify-center relative group">
+					<span class="absolute -inset-1 rounded-full bg-orange-500/20 animate-ping opacity-75 group-hover:opacity-100 pointer-events-none"></span>
+					<svg id="rocket-add-icon" class="w-6 h-6 transition-transform duration-300 group-hover:-translate-y-1 group-hover:translate-x-1 drop-shadow-[0_0_6px_rgba(249,115,22,0.8)] relative z-10" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24">
+						<path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09z"></path>
+						<path d="m12 15-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z"></path>
+						<path d="M9 12H4s.55-3.03 2-4c1.62-1.08 5 0 5 0"></path>
+						<path d="M12 15v5s3.03-.55 4-2c1.08-1.62 0-5 0-5"></path>
+					</svg>
+				</button>
+				<button onclick="quickCreateUser(this)" title="افزودن کاربر مولتی لوکیشن" class="p-2 rounded-full bg-indigo-50 dark:bg-indigo-950/40 border-2 border-indigo-500 dark:border-indigo-500 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 transition-all duration-300 text-indigo-600 dark:text-indigo-400 shadow-[0_0_15px_rgba(99,102,241,0.6)] hover:shadow-[0_0_25px_rgba(99,102,241,0.95)] hover:scale-125 active:scale-110 cursor-pointer inline-flex items-center justify-center relative group">
 					<span class="absolute -inset-1 rounded-full bg-indigo-500/20 animate-ping opacity-75 group-hover:opacity-100 pointer-events-none"></span>
 					<svg id="quick-add-icon" class="w-6 h-6 transition-transform duration-300 group-hover:rotate-12 drop-shadow-[0_0_6px_rgba(99,102,241,0.8)] relative z-10" fill="currentColor" viewBox="0 0 24 24"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
 				</button>
@@ -4707,7 +4745,15 @@ const HTML_TEMPLATES = {
 			</table>
 		</div>
 		<div id="empty-state" class="hidden p-8 border-2 border-dashed border-red-500/60 dark:border-red-500/50 bg-red-50 dark:bg-red-900/10 rounded-md text-center animate-pulse shadow-sm">
-			<p class="text-red-600 dark:text-red-400 font-bold text-lg">کاربری وجود ندارد. برای ساخت اولین کاربر روی دکمه « + » کلیک کنید یا از دکمه ⚡️ برای ایجاد سریع کاربر استفاده کنید.</p>
+			<p class="text-red-600 dark:text-red-400 font-bold text-lg flex items-center justify-center flex-wrap gap-2 leading-loose">
+				<span>کاربری وجود ندارد. برای ساخت کاربر روی</span>
+				<span class="inline-flex items-center justify-center p-1.5 rounded-full bg-green-50 dark:bg-green-950/30 border border-green-600 dark:border-green-700/60 text-green-700 dark:text-green-400 shadow-sm"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 4v16m8-8H4"></path></svg></span>
+				<span>کلیک کنید یا از دکمه‌های</span>
+				<span class="inline-flex items-center justify-center p-1.5 rounded-full bg-orange-50 dark:bg-orange-950/40 border border-orange-500 text-orange-600 dark:text-orange-400 shadow-sm"><svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09z"></path><path d="m12 15-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z"></path><path d="M9 12H4s.55-3.03 2-4c1.62-1.08 5 0 5 0"></path><path d="M12 15v5s3.03-.55 4-2c1.08-1.62 0-5 0-5"></path></svg></span>
+				<span>و</span>
+				<span class="inline-flex items-center justify-center p-1.5 rounded-full bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-500 text-indigo-600 dark:text-indigo-400 shadow-sm"><svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg></span>
+				<span>برای ایجاد سریع استفاده کنید.</span>
+			</p>
 		</div>
 	</main>
 <div id="pwa-install-modal" class="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-black/70 opacity-0 pointer-events-none transition-opacity duration-200 ease-out">
@@ -4806,9 +4852,13 @@ const HTML_TEMPLATES = {
 		<div class="inline-flex items-center justify-center w-16 h-16 rounded-full bg-red-100 dark:bg-red-900/30 text-red-500 mb-4 shadow-inner">
 			<svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
 		</div>
-		<h3 class="font-black text-xl text-gray-900 dark:text-white mb-2">🚨 🛑 اخطار 🛑 🚨</h3>
+		<h3 class="font-black text-xl text-gray-900 dark:text-white mb-3">🚨 🛑 اخطار 🛑 🚨</h3>
 		<p class="text-sm text-gray-600 dark:text-gray-400 mb-6 leading-relaxed font-medium">
-این پـنـل کاملاً <span class="text-red-500 font-bold">رایگان</span> است. هرگونه <span class="text-amber-500 font-bold">فروش پـنـل یا کـانفـیگ‌های آن</span>، و همچنین <span class="text-amber-500 font-bold">انتشار کـانفـیگ‌ها برای گرفتن ممبر و بازدید</span>، مصداق <span class="text-red-500 font-bold">کلاه‌برداری و رفتاری دور از انسانیت و شرافت</span> است. لطفاً از این ابزار <span class="text-green-500 font-bold">فقط به صورت شخصی و رایگان</span> استفاده کنید.		</p>
+			این پـنـل کاملاً <span class="text-red-500 font-bold">رایگان</span> است. هرگونه <span class="text-amber-500 font-bold">فروش پـنـل یا کـانفـیگ‌های آن</span>، و همچنین <span class="text-amber-500 font-bold">انتشار کـانفـیگ‌ها برای گرفتن ممبر و بازدید</span>، مصداق <span class="text-red-500 font-bold">کلاه‌برداری و رفتاری دور از انسانیت و شرافت</span> است.
+			<span class="block mt-3 px-3 py-2.5 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800/50 rounded-lg text-green-700 dark:text-green-400 font-bold shadow-sm">
+				لطفاً از این ابزار <span class="whitespace-nowrap">فقط به صورت شخصی و رایگان</span> استفاده کنید.
+			</span>
+		</p>
 		<button onclick="closeFreePanelWarning()" class="w-full py-3.5 bg-transparent border-2 border-green-800 text-green-900 hover:bg-green-800 hover:text-white dark:border-green-800 dark:text-green-700 dark:hover:bg-green-900 dark:hover:text-white font-black rounded-md text-sm transition duration-300 shadow-lg">
 			تأیید و موافقت
 		</button>
@@ -5005,7 +5055,7 @@ const HTML_TEMPLATES = {
 									<span class="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none text-gray-400">
 										<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path></svg>
 									</span>
-									<input type="text" id="input-name" required placeholder="مثال: ali_reza" dir="ltr" class="w-full pl-3 pr-9 py-2.5 bg-white dark:bg-slate-900 border border-gray-200 dark:border-amoled-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/50 text-xs font-semibold text-gray-800 dark:text-zinc-100 placeholder-gray-400 transition shadow-sm">
+									<input type="text" id="input-name" placeholder="zeus" dir="ltr" class="w-full pl-3 pr-9 py-2.5 bg-white dark:bg-slate-900 border border-gray-200 dark:border-amoled-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/50 text-xs font-semibold text-gray-800 dark:text-zinc-100 placeholder-gray-400 transition shadow-sm">
 								</div>
 							</div>
 							
@@ -5079,10 +5129,10 @@ const HTML_TEMPLATES = {
 											</div>
 										</div>
 										<div>
-											<label class="block text-[11px] font-bold text-gray-500 dark:text-zinc-400 mb-1 flex items-center gap-1">
+											<label class="block text-[11px] font-bold text-gray-500 dark:text-zinc-400 mb-1 flex items-center gap-1.5">
 												<span>محدودیت کاربر</span>
-												<button type="button" onclick="openOnlineCounterWarning();" class="text-red-500 hover:text-red-400 transition-transform hover:scale-110 cursor-pointer inline-flex items-center" title="هشدار">
-													<svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
+												<button type="button" onclick="openOnlineCounterWarning();" class="text-red-500 hover:text-red-400 cursor-pointer inline-flex items-center animate-sym-bounce hover:animate-none transition-transform hover:scale-125" title="هشدار مهم">
+													<svg class="w-4 h-4 drop-shadow-[0_0_6px_rgba(239,68,68,0.9)] dark:drop-shadow-[0_0_8px_rgba(248,113,113,1)]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
 												</button>
 											</label>
 											<div class="relative">
@@ -5222,6 +5272,20 @@ const HTML_TEMPLATES = {
 									</div>
 								</div>
 								<textarea id="input-ips" placeholder="104.16.0.1&#10;104.17.0.1&#10;162.159.192.1" class="w-full h-24 px-3 py-2.5 bg-white dark:bg-slate-900 border border-gray-200 dark:border-amoled-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/50 text-xs font-mono text-gray-800 dark:text-zinc-100 placeholder-gray-400 transition resize-none shadow-sm"></textarea>
+	
+								<div class="flex items-center justify-between p-3 mt-2 bg-emerald-50/50 dark:bg-emerald-900/10 border border-emerald-200/60 dark:border-emerald-800/40 rounded-lg shadow-sm">
+									<div class="flex items-center gap-2">
+										<svg class="w-4 h-4 text-emerald-600 dark:text-emerald-500 animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+										<div>
+											<span class="text-xs font-black text-gray-800 dark:text-zinc-200">تعویض خودکار آی‌پی (توصیه می‌شود)</span>
+											<span class="text-[10px] text-gray-500 dark:text-zinc-400 block font-normal mt-0.5">جابجایی آی‌پی‌ها با هر بار رفرش کلاینت</span>
+										</div>
+									</div>
+									<label class="relative inline-flex items-center cursor-pointer select-none">
+										<input type="checkbox" id="input-auto-rotate-ip-toggle" class="sr-only peer" checked>
+										<div class="w-9 h-5 bg-gray-300 peer-focus:outline-none rounded-full peer dark:bg-zinc-700 peer-checked:bg-emerald-600 transition-colors after:content-[''] after:absolute after:top-[2px] after:right-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-transform peer-checked:after:-translate-x-[16px]"></div>
+									</label>
+								</div>
 							</div>
 							
 							<div class="bg-gradient-to-b from-blue-50/50 to-indigo-50/20 dark:from-amoled-input/50 dark:to-amoled-bg/50 border border-blue-200/70 dark:border-amoled-border rounded-2xl overflow-hidden shadow-sm">
@@ -5359,7 +5423,6 @@ const HTML_TEMPLATES = {
 						</div>
 						
 						<div id="tab-proxy-settings" class="user-tab-panel hidden space-y-4">
-						<!-- بخش جدید تست مستقیم -->
 							<div class="p-4 bg-sky-50/50 dark:bg-sky-950/20 border border-sky-200/60 dark:border-sky-900/40 rounded-xl flex flex-col gap-3 shadow-sm">
 								<div class="flex items-center justify-between">
 									<div class="flex items-center gap-2">
@@ -5510,19 +5573,6 @@ const HTML_TEMPLATES = {
 							<span class="w-2 h-2 rounded-full bg-purple-500"></span> تعداد
 						</label>
 						<input type="number" id="ip-count-input" min="1" value="20" dir="ltr" class="w-full px-3 py-2.5 bg-white dark:bg-slate-900 border border-gray-200 dark:border-amoled-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/50 text-xs font-mono text-center font-semibold text-gray-800 dark:text-zinc-100 shadow-sm transition">
-					</div>
-					<div class="flex flex-col gap-2 border-t border-gray-200/70 dark:border-amoled-border pt-3 mt-1">
-						<div class="flex items-center justify-between">
-							<span class="text-xs font-bold text-gray-700 dark:text-zinc-300">تعویض خودکار آی‌پی (توصیه میشود)</span>
-							<label class="relative inline-flex items-center cursor-pointer select-none">
-								<input type="checkbox" id="input-auto-rotate-ip-toggle" onchange="toggleAutoRotateIpInputs(this.checked)" class="sr-only peer">
-								<div class="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer dark:bg-zinc-700 peer-checked:bg-green-600 transition-colors after:content-[''] after:absolute after:top-[2px] after:right-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-transform peer-checked:after:-translate-x-[16px]"></div>
-							</label>
-						</div>
-						<div id="auto-rotate-ip-inputs-container" class="hidden transition-all duration-300 pt-1">
-							<label class="block text-[11px] font-bold text-gray-500 dark:text-zinc-400 mb-1">زمان تعویض (دقیقه)</label>
-							<input type="number" id="input-auto-rotate-ip-time" min="1" placeholder="توصیه شده 5" onblur="if(this.value === '' || parseInt(this.value) < 1) this.value = '5';" class="w-full px-3 py-2.5 bg-white dark:bg-slate-900 border border-gray-200 dark:border-amoled-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/50 text-xs font-mono text-center font-semibold text-gray-800 dark:text-zinc-100 shadow-sm transition" dir="ltr">
-						</div>
 					</div>
 				</div>
 			</div>
@@ -5913,6 +5963,35 @@ ${COMMON_TOAST_HTML}
 		<div class="flex gap-3">
 			<button id="custom-confirm-cancel" class="flex-1 py-3 bg-transparent border-2 border-red-700 text-red-700 hover:bg-red-900/20 hover:text-red-800 dark:border-red-700 dark:text-red-500 dark:hover:bg-red-900/40 dark:hover:text-red-400 font-bold rounded-md text-sm transition duration-200 shadow-sm">انصراف</button>
 			<button id="custom-confirm-ok" class="flex-1 py-3 bg-transparent border-2 border-green-600 text-green-700 hover:bg-green-900/20 hover:text-green-800 dark:border-green-500 dark:text-green-500 dark:hover:bg-green-900/40 dark:hover:text-green-400 font-bold rounded-md text-sm transition duration-200 shadow-lg">تأیید</button>
+		</div>
+	</div>
+</div>
+<div id="rocket-modal" class="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-black/60 opacity-0 pointer-events-none transition-all duration-300 ease-out">
+	<div class="w-full max-w-sm bg-white dark:bg-amoled-card border border-orange-500/50 rounded-2xl shadow-2xl p-6 transform transition-all scale-95 opacity-0 duration-200">
+		<div class="flex justify-between items-center mb-4">
+			<div class="flex items-center gap-2">
+				<div class="w-8 h-8 rounded-lg bg-orange-500/10 border border-orange-500/20 text-orange-600 dark:text-orange-400 flex items-center justify-center shadow-sm">
+					<svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24">
+						<path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09z"></path>
+						<path d="m12 15-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z"></path>
+						<path d="M9 12H4s.55-3.03 2-4c1.62-1.08 5 0 5 0"></path>
+						<path d="M12 15v5s3.03-.55 4-2c1.08-1.62 0-5 0-5"></path>
+					</svg>
+				</div>
+				<h3 class="text-sm font-black text-gray-900 dark:text-white">کانفیگ تک لوکیشن</h3>
+			</div>
+			<button onclick="toggleRocketModal(false)" class="p-1.5 rounded-md bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900/50 text-red-600 dark:text-red-500 hover:bg-red-100 dark:hover:bg-red-900/50 transition-all duration-200 shadow-sm" title="بستن">
+				<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+			</button>
+		</div>
+		<p class="text-[11px] text-gray-600 dark:text-gray-400 mb-5 font-medium leading-relaxed">کشور مورد نظر را انتخاب کنید تا کانفیگ تک لوکیشن پرسرعت ساخته شود.</p>
+		<div class="space-y-4">
+			<div>
+				<select id="rocket-country-select" class="w-full px-3 py-2.5 bg-gray-50 dark:bg-amoled-input border border-gray-300 dark:border-amoled-border rounded-lg text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-orange-500/50 text-gray-800 dark:text-zinc-100 cursor-pointer shadow-sm transition">
+					<option value="">در حال بارگذاری کشورها...</option>
+				</select>
+			</div>
+			<button id="rocket-submit-btn" onclick="executeRocketCreate()" class="w-full py-2.5 bg-transparent border-2 border-orange-600 text-orange-700 hover:bg-orange-900/20 hover:text-orange-800 dark:border-orange-500 dark:text-orange-500 dark:hover:bg-orange-900/40 dark:hover:text-orange-400 font-black rounded-xl text-xs sm:text-sm transition shadow-lg">شروع اسکن و ساخت</button>
 		</div>
 	</div>
 </div>
@@ -6384,7 +6463,7 @@ ${COMMON_TOAST_HTML}
 				const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
 				let randStr = '';
 				for (let i = 0; i < 8; i++) randStr += chars.charAt(Math.floor(Math.random() * chars.length));
-				const username = 'ZEUS-' + randStr;
+				const username = randStr;
 				
 				if (!cachedVipList || cachedVipList.length === 0) {
 					await initVipCache();
@@ -6528,7 +6607,7 @@ ${COMMON_TOAST_HTML}
 						const j = Math.floor(Math.random() * (i + 1));
 						[shuffledIps[i], shuffledIps[j]] = [shuffledIps[j], shuffledIps[i]];
 					}
-					selectedIps = shuffledIps.slice(0, 6);
+					selectedIps = shuffledIps.slice(0, 4);
 				}
 				const ipsStr = selectedIps.join('\\n');
 				
@@ -6539,12 +6618,12 @@ ${COMMON_TOAST_HTML}
 						username: username, limit_gb: null, expiry_days: null, limit_req: null, ip_limit: null,
 						auto_reset_vol_days: 0, auto_reset_req_days: 0, frag_len: "", frag_int: "",
 						fingerprint: "unsafe", block_ads: 1, block_porn: 0, port: "443", tls: "on",
-						ips: ipsStr, ip_operator: "all", ip_count: 6, auto_rotate_ip: 1, rotate_time: 5,
+						ips: ipsStr, ip_operator: "all", ip_count: 4, auto_rotate_ip: 1, rotate_time: 5,
 						user_socks5: userSocks5, auto_rotate_user_proxy: 1, connection_type: "vless", enable_direct: false
 					})
 				});
 				if (response.ok) {
-					showToast('✅ کاربر سریع با موفقیت ایجاد شد.');
+					showToast('✅ کاربر مولتی لوکیشن با موفقیت ایجاد شد.');
 					await loadUsers(true);
 				} else {
 					const errData = await response.json();
@@ -6563,6 +6642,178 @@ ${COMMON_TOAST_HTML}
 				}, 1000); 
 			}
 		}
+let activeRocketBtn = null;
+
+function toggleRocketModal(show) {
+	setModalState('rocket-modal', show);
+}
+
+async function openRocketModal(btn) {
+	if (window.isQuickCreateLocked) {
+		showToast('⏳ لطفاً کمی صبر کنید...', 'error');
+		return;
+	}
+	activeRocketBtn = btn;
+	toggleRocketModal(true);
+	
+	const select = document.getElementById('rocket-country-select');
+	const submitBtn = document.getElementById('rocket-submit-btn');
+	
+	select.innerHTML = '<option value="">در حال بررسی مخزن...</option>';
+	submitBtn.disabled = true;
+
+	if (!cachedVipList || cachedVipList.length === 0) {
+		await initVipCache();
+	}
+
+	if (cachedVipList && cachedVipList.length > 0) {
+		select.innerHTML = '<option value="">یک کشور انتخاب کنید...</option>';
+		cachedVipList.forEach(function(country) {
+			const option = document.createElement('option');
+			option.value = country;
+			const flag = typeof getFlagEmojiText === 'function' ? getFlagEmojiText(country) : '🌐';
+			option.textContent = flag + ' ' + country;
+			select.appendChild(option);
+		});
+		submitBtn.disabled = false;
+	} else {
+		select.innerHTML = '<option value="">پـروکـسـی اختصاصی موجود نیست</option>';
+	}
+}
+
+async function executeRocketCreate() {
+	const select = document.getElementById('rocket-country-select');
+	const country = select.value;
+	if (!country) {
+		alert('لطفاً یک کشور انتخاب کنید.');
+		return;
+	}
+	toggleRocketModal(false);
+
+	if (window.isQuickCreateLocked) return;
+	window.isQuickCreateLocked = true;
+	
+	const btn = activeRocketBtn;
+	if (btn) btn.disabled = true;
+	const icon = btn ? btn.querySelector('svg') : null;
+	if (icon) {
+		icon.classList.add('animate-spin');
+		icon.classList.remove('group-hover:-translate-y-1', 'group-hover:translate-x-1');
+	}
+
+	try {
+		const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+		let randStr = '';
+		for (let i = 0; i < 8; i++) randStr += chars.charAt(Math.floor(Math.random() * chars.length));
+		const username = randStr;
+
+		const lines = cachedVipProxies[country];
+		if (!lines || lines.length === 0) {
+			alert('هیچ پروکسی در این کشور یافت نشد.');
+			return;
+		}
+
+		showToast('🚀 در حال اسکن پینگ ' + lines.length + ' پروکسی از کشور ' + country + '...');
+
+		const controller = new AbortController();
+		let successProxies = [];
+		
+		const testPromises = lines.map(async (proxyLine) => {
+			await new Promise(r => setTimeout(r, Math.floor(Math.random() * 200)));
+			try {
+				const res = await fetch('/api/test-proxy', {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify({ proxy: proxyLine, skip_country: true }), 
+					signal: controller.signal
+				});
+				const data = await res.json();
+				if (data.success && data.ping) {
+					successProxies.push({ proxy: proxyLine, ping: data.ping });
+				}
+			} catch(e) {}
+		});
+
+		const timeoutPromise = new Promise(resolve => setTimeout(resolve, 12000));
+		await Promise.race([Promise.all(testPromises), timeoutPromise]);
+		controller.abort();
+
+		if (successProxies.length === 0) {
+			alert('خطا: هیچ پروکسی سالمی با پینگ موفق در این کشور یافت نشد.');
+			return;
+		}
+
+		successProxies.sort((a, b) => a.ping - b.ping);
+		const bestProxy = successProxies[0].proxy;
+		
+		let availableIps = [];
+		if (Object.keys(cachedIpsData).length === 0) {
+			try {
+				const resIps = await fetchWithFallbackUI('ips.txt');
+				if (resIps.ok) {
+					const text = await resIps.text();
+					const blocks = text.split('----------');
+					blocks.forEach(block => {
+						const l = block.trim().split('\\n').map(x => x.trim()).filter(x => x.length > 0);
+						l.forEach(line => {
+							if (!line.includes('#') && !line.startsWith('[source')) availableIps.push(line);
+						});
+					});
+				}
+			} catch(e) {}
+		} else {
+			Object.values(cachedIpsData).forEach(ips => { availableIps = availableIps.concat(ips); });
+		}
+		
+		availableIps = [...new Set(availableIps)];
+		let selectedIps = [];
+		
+		if (availableIps.length > 0) {
+			const shuffledIps = availableIps.slice();
+			for (let i = shuffledIps.length - 1; i > 0; i--) {
+				const j = Math.floor(Math.random() * (i + 1));
+				[shuffledIps[i], shuffledIps[j]] = [shuffledIps[j], shuffledIps[i]];
+			}
+			selectedIps = shuffledIps.slice(0, 10); 
+		}
+		const ipsStr = selectedIps.join('\\n');
+
+		const finalSocks5 = JSON.stringify([{ proxy: bestProxy, country: country }]);
+
+		const response = await fetch('/api/users', {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({
+				username: username, limit_gb: null, expiry_days: null, limit_req: null, ip_limit: null,
+				auto_reset_vol_days: 0, auto_reset_req_days: 0, frag_len: "", frag_int: "",
+				fingerprint: "unsafe", block_ads: 1, block_porn: 0, port: "443", tls: "on",
+				ips: ipsStr, ip_operator: "all", ip_count: 10, auto_rotate_ip: 1, rotate_time: 5,
+				user_socks5: finalSocks5, auto_rotate_user_proxy: 1, connection_type: "vless", enable_direct: false
+			})
+		});
+
+		if (response.ok) {
+			showToast('🚀 کاربر تک کشوره با بهترین پینگ با موفقیت ایجاد شد.');
+			await loadUsers(true);
+		} else {
+			const errData = await response.json();
+			alert('خطا: ' + (errData.error || 'عملیات ناموفق بود'));
+		}
+	} catch(err) {
+		alert('خطا در برقراری ارتباط با سرور');
+	} finally {
+		setTimeout(() => {
+			window.isQuickCreateLocked = false;
+			if (btn) {
+				btn.disabled = false;
+				if (icon) {
+					icon.classList.remove('animate-spin');
+					icon.classList.add('group-hover:-translate-y-1', 'group-hover:translate-x-1');
+				}
+			}
+		}, 1000);
+	}
+}
 		function openCreateModal() {
 			isEditMode = false;
 			editingUsername = '';
@@ -6602,7 +6853,8 @@ ${COMMON_TOAST_HTML}
 			window.proxyFieldsData = [""];
 			window.activeProxyIndex = 0;
 			if (typeof window.renderProxyFieldsUI === 'function') window.renderProxyFieldsUI();
-			document.getElementById('hidden-auto-rotate').value = '0';
+			const autoRotateIpToggle = document.getElementById('input-auto-rotate-ip-toggle');
+			if (autoRotateIpToggle) autoRotateIpToggle.checked = true;
 			document.getElementById('hidden-rotate-time').value = '';
 			document.getElementById('hidden-ip-operator').value = 'all';
 			document.getElementById('hidden-ip-count').value = '15';
@@ -6863,14 +7115,23 @@ ${COMMON_TOAST_HTML}
 			const emptyState = document.getElementById('empty-state');
 			const tbody = document.getElementById('users-tbody');
 			if (users.length === 0) {
-				loadingState.classList.add('hidden');
-				emptyState.classList.remove('hidden');
-				tableContainer.classList.add('hidden');
-				if (window.allUsers && window.allUsers.length > 0) {
-					emptyState.querySelector('p').innerText = 'کاربری با مشخصات جستجو شده یافت نشد.';
-				} else {
-					emptyState.querySelector('p').innerText = 'کاربری وجود ندارد. برای ساخت اولین کاربر روی دکمه « + » کلیک کنید یا از دکمه ⚡️ برای ایجاد سریع کاربر استفاده کنید.';
-				}
+					loadingState.classList.add('hidden');
+					emptyState.classList.remove('hidden');
+					tableContainer.classList.add('hidden');
+					
+					emptyState.querySelector('p').className = 'text-red-600 dark:text-red-400 font-bold text-lg flex items-center justify-center flex-wrap gap-2 leading-loose';
+					
+					if (window.allUsers && window.allUsers.length > 0) {
+						emptyState.querySelector('p').innerHTML = 'کاربری با مشخصات جستجو شده یافت نشد.';
+					} else {
+						emptyState.querySelector('p').innerHTML = '<span>کاربری وجود ندارد. برای ساخت کاربر روی</span>' +
+							'<span class="inline-flex items-center justify-center p-1.5 rounded-full bg-green-50 dark:bg-green-950/30 border border-green-600 dark:border-green-700/60 text-green-700 dark:text-green-400 shadow-sm"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 4v16m8-8H4"></path></svg></span>' +
+							'<span>کلیک کنید یا از دکمه‌های</span>' +
+							'<span class="inline-flex items-center justify-center p-1.5 rounded-full bg-orange-50 dark:bg-orange-950/40 border border-orange-500 text-orange-600 dark:text-orange-400 shadow-sm"><svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09z"></path><path d="m12 15-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z"></path><path d="M9 12H4s.55-3.03 2-4c1.62-1.08 5 0 5 0"></path><path d="M12 15v5s3.03-.55 4-2c1.08-1.62 0-5 0-5"></path></svg></span>' +
+							'<span>و</span>' +
+							'<span class="inline-flex items-center justify-center p-1.5 rounded-full bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-500 text-indigo-600 dark:text-indigo-400 shadow-sm"><svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg></span>' +
+							'<span>برای ایجاد سریع استفاده کنید.</span>';
+					}
 			} else {
 				loadingState.classList.add('hidden');
 				emptyState.classList.add('hidden');
@@ -7174,13 +7435,11 @@ ${COMMON_TOAST_HTML}
 								'</td>' +
 								'<td class="bg-white/60 dark:bg-zinc-900/40  group-hover:bg-white/80 dark:group-hover:bg-zinc-900/60 p-1.5 border-y border-gray-200 dark:border-zinc-800">' +
 									'<div class="flex flex-col gap-1 w-[115px] mx-auto">' +
-										'<!-- وضعیت (تمام عرض) -->' +
 										'<button data-user="' + encodeURIComponent(user.username) + '" onclick="copyStatusLink(this.dataset.user)" class="w-full h-[24px] p-0 flex items-center justify-center gap-1 bg-green-50 dark:bg-green-900/30 text-green-700 dark:text-green-500 hover:bg-green-100 dark:hover:bg-green-900/50 rounded-full text-[9px] font-bold transition border border-green-200 dark:border-green-800 whitespace-nowrap">' +
 											'<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path></svg>' +
 											'وضعیت اتصال' +
 										'</button>' +
 										
-										'<!-- ساب متنی + QR -->' +
 										'<div class="flex flex-row gap-1 w-full h-[24px]">' +
 											'<button data-user="' + encodeURIComponent(user.username) + '" onclick="copySubLink(this.dataset.user)" class="flex-1 h-[24px] p-0 flex items-center justify-center gap-1 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 rounded-full text-[9px] font-bold transition border border-indigo-200 dark:border-indigo-800 whitespace-nowrap">' +
 												'<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"></path></svg>' +
@@ -7191,7 +7450,6 @@ ${COMMON_TOAST_HTML}
 											'</button>' +
 										'</div>' +
 
-										'<!-- ساب Sing-box + QR -->' +
 										'<div class="!hidden flex-row gap-1 w-full h-[24px]">' +
 											'<button data-user="' + encodeURIComponent(user.username) + '" onclick="copySingboxLink(this.dataset.user)" class="flex-1 h-[24px] p-0 flex items-center justify-center gap-1 bg-purple-50 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 hover:bg-purple-100 dark:hover:bg-purple-900/50 rounded-full text-[9px] font-bold transition border border-purple-200 dark:border-purple-800 whitespace-nowrap">' +
 												'<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"></path></svg>' +
@@ -7431,7 +7689,7 @@ ${COMMON_TOAST_HTML}
 			const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
 			let randStr = '';
 			for (let i = 0; i < 8; i++) randStr += chars.charAt(Math.floor(Math.random() * chars.length));
-			const username = 'ZEUS-' + randStr;
+			const username = randStr;
 			const nameInput = document.getElementById('input-name');
 			if (nameInput) {
 				nameInput.value = username;
@@ -7452,9 +7710,18 @@ ${COMMON_TOAST_HTML}
 			if (vlessEnabled) selectedProtocols.push('vless');
 			if (trojanEnabled) selectedProtocols.push('trojan');
 			const connection_type = selectedProtocols.join(',');
-			const username = document.getElementById('input-name').value;
+			const username = document.getElementById('input-name').value.trim();
+
+			if (!username) {
+				if (typeof window.switchUserTab === 'function') window.switchUserTab('tab-user-info');
+				alert('⚠️ وارد کردن نام کاربری الزامی است!');
+				updateSubmitBtnState(isEditMode ? 'ذخیره تغییرات' : 'ایجاد کاربر', false);
+				return;
+			}
+
 			const usernameRegex = /^[a-zA-Z0-9_-]+$/;
 			if (!usernameRegex.test(username)) {
+				if (typeof window.switchUserTab === 'function') window.switchUserTab('tab-user-info');
 				alert('⚠️ نام کاربری فقط می‌تواند شامل حروف انگلیسی، اعداد، خط تیره (-) و آندرلاین (_) باشد!');
 				updateSubmitBtnState(isEditMode ? 'ذخیره تغییرات' : 'ایجاد کاربر', false);
 				return;
@@ -7494,8 +7761,8 @@ ${COMMON_TOAST_HTML}
 			const isAutoReset = document.getElementById('input-auto-reset-toggle').checked;
 			const auto_reset_vol_days = isAutoReset ? parseInt(document.getElementById('input-auto-reset-vol').value) || 0 : 0;
 			const auto_reset_req_days = isAutoReset ? parseInt(document.getElementById('input-auto-reset-req').value) || 0 : 0;
-			const auto_rotate_ip = parseInt(document.getElementById('hidden-auto-rotate').value) || 0;
-			const rotate_time = parseInt(document.getElementById('hidden-rotate-time').value) || 0;
+			const auto_rotate_ip = document.getElementById('input-auto-rotate-ip-toggle') ? (document.getElementById('input-auto-rotate-ip-toggle').checked ? 1 : 0) : 0;
+			const rotate_time = 0;
 			const ip_operator = document.getElementById('hidden-ip-operator').value || 'all';
 			const ip_count = parseInt(document.getElementById('hidden-ip-count').value) || 20;
 			const userProxyMode = document.getElementById('user-proxy-mode-toggle') ? document.getElementById('user-proxy-mode-toggle').checked : false;
@@ -7628,6 +7895,10 @@ document.addEventListener('keydown', function(event) {
     }
 });
 document.addEventListener('contextmenu', function(event) {
+    const tag = event.target.tagName.toLowerCase();
+    if (tag === 'input' || tag === 'textarea') {
+        return true;
+    }
     event.preventDefault(); return false;
 });
 (function() {
@@ -7907,7 +8178,6 @@ function downloadZeusSource() {
 				};
 				
 				const startHold = (e) => {
-					if (e.type !== 'mousedown') e.preventDefault();
 					stopHold();
 					startTime = performance.now();
 					if (btn) btn.style.transform = 'scale(0.96)';
@@ -8185,7 +8455,8 @@ function editUser(encodedUsername) {
 	document.getElementById('input-ip-limit').value = (user.ip_limit !== undefined && user.ip_limit !== null) ? user.ip_limit : (user.max_connections || '');
 	document.getElementById('input-ips').value = user.ips || '';
 	document.getElementById('fingerprint-select').value = user.fingerprint || 'chrome';
-	document.getElementById('hidden-auto-rotate').value = user.auto_rotate_ip || '0';
+	const autoRotateIpToggle = document.getElementById('input-auto-rotate-ip-toggle');
+	if (autoRotateIpToggle) autoRotateIpToggle.checked = (user.auto_rotate_ip === 1);
 	document.getElementById('hidden-rotate-time').value = user.rotate_time || '';
 	document.getElementById('hidden-ip-operator').value = user.ip_operator || 'all';
 	document.getElementById('hidden-ip-count').value = user.ip_count || '20';
@@ -8726,7 +8997,7 @@ async function testUserSocksProxy() {
 				window.location.reload();
 			}
 		}
-const CURRENT_VERSION = '2.0.9';
+const CURRENT_VERSION = '2.1.0';
 const UPDATE_FIX = "constsCURRENT_VERSION='d.d.d'";
 		window.autoUpdateStatusCache = false;
 		async function checkAutoUpdateSetup() {
@@ -8941,13 +9212,6 @@ function populateIpSelect() {
 }
 function toggleIpSelectorModal(show) {
 	setModalState('ip-selector-modal', show);
-	if (!show) {
-		const rotateToggle = document.getElementById('input-auto-rotate-ip-toggle');
-		if (rotateToggle) rotateToggle.checked = false;
-		const rotateTime = document.getElementById('input-auto-rotate-ip-time');
-		if (rotateTime) rotateTime.value = '';
-		if (typeof window.toggleAutoRotateIpInputs === 'function') window.toggleAutoRotateIpInputs(false);
-	}
 }
 function toggleIpScannerModal(show) {
 	setModalState('ip-scanner-modal', show);
@@ -8971,26 +9235,24 @@ function copyScannerCode(text, btn) {
 		alert('خطا در کپی متن!');
 	});
 }
-		async function openIpSelectorModal() {
-			toggleIpSelectorModal(true);
-			document.getElementById('ip-loading-state').classList.remove('hidden');
-			document.getElementById('ip-selection-form').classList.add('hidden');
-			await fetchIpsList();
-			const op = document.getElementById('hidden-ip-operator').value;
-			const selectOp = document.getElementById('ip-operator-select');
-			if (selectOp.querySelector('option[value="' + op + '"]')) {
-				selectOp.value = op;
-			} else {
-				selectOp.value = 'all';
-			}
-			document.getElementById('ip-count-input').value = document.getElementById('hidden-ip-count').value || 15;
-			const isAuto = document.getElementById('hidden-auto-rotate').value === '1';
-			document.getElementById('input-auto-rotate-ip-toggle').checked = isAuto;
-			document.getElementById('input-auto-rotate-ip-time').value = document.getElementById('hidden-rotate-time').value;
-			if (typeof window.toggleAutoRotateIpInputs === 'function') window.toggleAutoRotateIpInputs(isAuto);
-			document.getElementById('ip-loading-state').classList.add('hidden');
-			document.getElementById('ip-selection-form').classList.remove('hidden');
-		}
+async function openIpSelectorModal() {
+	toggleIpSelectorModal(true);
+	document.getElementById('ip-loading-state').classList.remove('hidden');
+	document.getElementById('ip-selection-form').classList.add('hidden');
+	await fetchIpsList();
+	
+	const op = document.getElementById('hidden-ip-operator').value;
+	const selectOp = document.getElementById('ip-operator-select');
+	if (selectOp.querySelector('option[value="' + op + '"]')) {
+		selectOp.value = op;
+	} else {
+		selectOp.value = 'all';
+	}
+	document.getElementById('ip-count-input').value = document.getElementById('hidden-ip-count').value || 15;
+	
+	document.getElementById('ip-loading-state').classList.add('hidden');
+	document.getElementById('ip-selection-form').classList.remove('hidden');
+}
 function applySelectedIps() {
 	const operator = document.getElementById('ip-operator-select').value;
 	let count = parseInt(document.getElementById('ip-count-input').value, 10);
@@ -9016,8 +9278,6 @@ function applySelectedIps() {
 		selectedIps = shuffled.slice(0, count);
 	}
 	document.getElementById('input-ips').value = selectedIps.join('\\n');
-	document.getElementById('hidden-auto-rotate').value = document.getElementById('input-auto-rotate-ip-toggle').checked ? '1' : '0';
-	document.getElementById('hidden-rotate-time').value = document.getElementById('input-auto-rotate-ip-time').value || '';
 	document.getElementById('hidden-ip-operator').value = operator;
 	document.getElementById('hidden-ip-count').value = count;
 	toggleIpSelectorModal(false);
@@ -9200,6 +9460,7 @@ function applySelectedIps() {
 			window.addEventListener('click', (e) => {
 				if (window._modalMouseDownTarget && window._modalMouseDownTarget !== e.target) return;
 				if (e.target.id === 'user-modal') toggleModal(false);
+				if (e.target.id === 'rocket-modal') toggleRocketModal(false);
 				if (e.target.id === 'ip-selector-modal') toggleIpSelectorModal(false);
 				if (e.target.id === 'ip-scanner-modal') toggleIpScannerModal(false);
 				if (e.target.id === 'settings-modal') toggleSettingsModal(false);
