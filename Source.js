@@ -3328,8 +3328,12 @@ async function connectStreams(remoteSocket, webSocket, headerData, retryFunc, on
 	}
 	if (!hasData && retryFunc) await retryFunc();
 }
+// connect() joins hostname and port into "host:port", so an IPv6 literal must be wrapped in []
+function bracketIPv6(host) {
+	return typeof host === "string" && host.includes(":") && !host.startsWith("[") ? `[${host}]` : host;
+}
 async function connectDirect(address, port, initialData = null, targetDoh = "https://cloudflare-dns.com/dns-query") {
-	const socket = connect({ hostname: address, port: port });
+	const socket = connect({ hostname: bracketIPv6(address), port: port });
 	await Promise.race([socket.opened, new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), 5000))]);
 	if (initialData && initialData.byteLength > 0) {
 		const w = socket.writable.getWriter();
@@ -3586,7 +3590,7 @@ async function connectProxy(proxyStr, destAddr, destPort, initialData) {
 }
 async function connectSocks4(proxyStr, destAddr, destPort, initialData) {
 	const { user, pass, host, port, auth } = parseProxyConfig(proxyStr, 1080);
-	const socket = connect({ hostname: host, port: port });
+	const socket = connect({ hostname: bracketIPv6(host), port: port });
 	await Promise.race([socket.opened, new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), 5000))]);
 	const reader = socket.readable.getReader();
 	const writer = socket.writable.getWriter();
@@ -3673,7 +3677,7 @@ function parseProxyConfig(proxyStr, defaultPort) {
 }
 async function connectSocks5(socksStr, destAddr, destPort, initialData) {
 	const { user, pass, host, port, auth } = parseProxyConfig(socksStr, 1080);
-	const socket = connect({ hostname: host, port: port });
+	const socket = connect({ hostname: bracketIPv6(host), port: port });
 	await Promise.race([socket.opened, new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), 5000))]);
 	const reader = socket.readable.getReader();
 	const writer = socket.writable.getWriter();
@@ -3750,7 +3754,7 @@ async function connectSocks5(socksStr, destAddr, destPort, initialData) {
 }
 async function connectHttp(proxyStr, destAddr, destPort, initialData) {
 	const { user, pass, host, port, auth } = parseProxyConfig(proxyStr, 80);
-	const socket = connect({ hostname: host, port: port });
+	const socket = connect({ hostname: bracketIPv6(host), port: port });
 	await Promise.race([socket.opened, new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), 5000))]);
 	const reader = socket.readable.getReader();
 	const writer = socket.writable.getWriter();
