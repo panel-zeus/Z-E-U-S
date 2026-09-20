@@ -10,9 +10,9 @@ const USER_REQ_CACHE = new Map();
 const LOGIN_ATTEMPTS = new Map();
 let GLOBAL_REQ_COUNT = 0;
 let GLOBAL_LAST_REQ_WRITE = 0;
-const DNS_CACHE_TTL = 5 * 60 * 1000;
+const DNS_CACHE_TTL = 30 * 60 * 1000;
 const DOH_RESOLVER = "https://cloudflare-dns.com/dns-query";
-const UPSTREAM_BUNDLE_TARGET_BYTES = 128 * 1024;
+const UPSTREAM_BUNDLE_TARGET_BYTES = 512 * 1024;
 const UPSTREAM_QUEUE_MAX_BYTES = 32 * 1024 * 1024;
 const UPSTREAM_QUEUE_MAX_ITEMS = 4096;
 const DOWNSTREAM_GRAIN_BYTES = 128 * 1024;
@@ -1706,7 +1706,6 @@ const SubscriptionService = {
 					if (user.tls_mask) userFrag += "&mask=" + encodeURIComponent(user.tls_mask);
 						
 					const tlsParams = isTlsPort ? ("&insecure=0&fp=" + fp + "&allowInsecure=0&sni=" + host) : "";
-
 					if (enableVless) {
 						const remark = "ZEUS | " + proxy.flagEmoji + " | " + user.username;
 						links.push("vl" + "e" + "ss://" + user.uuid + "@" + ip + ":" + portStr + "?path=" + proxy.currentDynPath + "&security=" + tlsVal + "&encryption=none&host=" + host + "&type=ws" + tlsParams + userFrag + "#" + encodeURIComponent(remark));
@@ -1754,7 +1753,6 @@ const SubscriptionService = {
 			},
 		});
 	},
-
 	async generateYaml(user, host) {
 		let ips = [host];
 		if (user.auto_rotate_ip === 1) {
@@ -1790,7 +1788,6 @@ const SubscriptionService = {
 			proxyList = proxyList.filter(p => p !== null && p !== "");
 		}
 		if (proxyList.length === 0) proxyList = [null];
-
 		let resolvedProxies = [];
 		for (let locIdx = 0; locIdx < proxyList.length; locIdx++) {
 			let proxyItem = proxyList[locIdx];
@@ -1842,7 +1839,6 @@ const SubscriptionService = {
 					}
 				}
 			}
-
 			let flagEmoji = "🌐";
 			if (countryCode && countryCode !== "UN" && countryCode.length === 2) {
 				const codePoints = countryCode.toUpperCase().split("").map((char) => 127397 + char.charCodeAt(0));
@@ -1853,16 +1849,13 @@ const SubscriptionService = {
 			const currentDynPath = rawPath + (proxyItem !== null && proxyItem !== "" ? "/loc-" + locIdx : "");
 			resolvedProxies.push({ flagEmoji, currentDynPath });
 		}
-
 		const connType = String(user.connection_type || "vless").toLowerCase();
 		const enableVless = connType.includes("vless") || connType === "vless" || (!connType.includes("trojan") && !connType.includes("shadowsocks"));
 		const enableTrojan = connType.includes("trojan");
 		const enableSS = connType.includes("shadowsocks");
-
 		let yamlProxies = [];
 		let proxyNames = [];
 		let nameCounter = {};
-
 		ips.forEach((ip) => {
 			ports.forEach((portStr) => {
 				resolvedProxies.forEach((proxy) => {
@@ -1935,7 +1928,6 @@ const SubscriptionService = {
 				});
 			});
 		});
-
 		let yamlStr = "dns:\n" +
 		              "  enable: true\n" +
 		              "  prefer-h3: false\n" +
@@ -1981,7 +1973,6 @@ const SubscriptionService = {
 				flagGroups[flag].push(n);
 			}
 		});
-
 		const getPersianName = (flag) => {
 			if (flag === "🌐" || flag === "🌍") return "مستقیم";
 			try {
@@ -1993,7 +1984,6 @@ const SubscriptionService = {
 			} catch (e) {}
 			return 'سرور';
 		};
-
 		yamlStr += "\n\nproxy-groups:\n" +
 		           "  - name: \"🚀 انتخاب مسیر\"\n" +
 		           "    type: select\n" +
@@ -2003,7 +1993,6 @@ const SubscriptionService = {
 			yamlStr += "      - \"" + flag + " " + getPersianName(flag) + "\"\n";
 		});
 		yamlStr += "      - \"DIRECT\"\n";
-
 		Object.keys(flagGroups).forEach(flag => {
 			yamlStr += "\n  - name: \"" + flag + " " + getPersianName(flag) + "\"\n" +
 			           "    type: url-test\n" +
@@ -2015,7 +2004,6 @@ const SubscriptionService = {
 				yamlStr += "      - \"" + n + "\"\n";
 			});
 		});
-
 		yamlStr += "\nrules:\n" +
 		           "  - MATCH,🚀 انتخاب مسیر\n\n" +
 		           "mixed-port: 10809\n" +
@@ -2039,7 +2027,6 @@ const SubscriptionService = {
 		           "      ports: [443]\n" +
 		           "    QUIC:\n" +
 		           "      ports: [443]\n";
-
 		const downloadBytes = Math.floor((user.used_gb || 0) * 1073741824);
 		const totalBytes = user.limit_gb ? Math.floor(user.limit_gb * 1073741824) : 0;
 		let expireTimestamp = 0;
@@ -2055,7 +2042,6 @@ const SubscriptionService = {
 			}
 		}
 		const subUserInfo = `upload=0; download=${downloadBytes}; total=${totalBytes}; expire=${expireTimestamp}`;
-
 		return new Response(yamlStr, {
 			headers: {
 				"Content-Type": "text/plain; charset=utf-8",
@@ -2470,7 +2456,6 @@ async function handlevIees(env, storedData = null, ctx = null, request = null) {
 			return;
 		}
 		chunkBuffer = concatBytes(chunkBuffer, chunk);
-
 		if (chunkBuffer.byteLength > 16384) {
 				serverSock.close(1009, "Payload Too Large");
 				return;
@@ -2495,11 +2480,9 @@ async function handlevIees(env, storedData = null, ctx = null, request = null) {
 			let respHeader = null;
 			let userLookupKey = null;
 			let user = null;
-
 			if (isHeaderParsing) return;
 			isHeaderParsing = true;
 			isTrojanProto = isTrojan;
-
 			try {
 				if (isShadowsocks) {
 					if (chunkBuffer.byteLength < 50) { isHeaderParsing = false; return; }
@@ -2938,7 +2921,6 @@ async function handlevIees(env, storedData = null, ctx = null, request = null) {
 								loopBypassProxies = shuffled.slice(0, 4);
 							}
 						}
-
 						if (loopBypassProxies.length > 0) {
 							const ac = new AbortController();
 							try {
@@ -3070,7 +3052,6 @@ async function handlevIees(env, storedData = null, ctx = null, request = null) {
 let CF_USAGE_CACHE = null;
 let CF_USAGE_LAST_FETCH = 0;
 let CF_USAGE_CACHE_DATE = ""; 
-
 async function getCfUsage(env) {
 	if (!env.CF_API_TOKEN || !env.CF_ACCOUNT_ID) return { today: 0, total: 0, d1Reads: 0, d1Writes: 0 };
 	const nowTime = Date.now();
@@ -3463,9 +3444,9 @@ function createUpstreamQueue({ getWriter, releaseWriter, retryConnect, closeConn
 	};
 }
 function createDownstreamSender(webSocket, headerData = null) {
-	const MAX_CAP = 256 * 1024;
-	const MIN_CAP = 16 * 1024;
-	let currentPacketCap = 128 * 1024;
+	const MAX_CAP = 1024 * 1024;
+	const MIN_CAP = 64 * 1024;
+	let currentPacketCap = 512 * 1024;
 	const tailBytes = 512;
 	let header = headerData;
 	let pendingBuffer = null;
@@ -3484,9 +3465,9 @@ function createDownstreamSender(webSocket, headerData = null) {
 		if (webSocket.readyState !== 1) throw new Error("ws.readyState is not open");
 		webSocket.send(chunk);
 		if (typeof webSocket.bufferedAmount === "number") {
-			while (webSocket.bufferedAmount > 1024 * 1024) {
+			while (webSocket.bufferedAmount > 4096 * 1024) {
 				if (webSocket.readyState !== 1) break;
-				await new Promise(r => setTimeout(r, 20));
+				await new Promise(r => setTimeout(r, 5));
 			}
 		}
 	};
@@ -3552,9 +3533,9 @@ function createDownstreamSender(webSocket, headerData = null) {
 }
 async function waitForBackpressure(ws) {
 	if (typeof ws.bufferedAmount === "number") {
-		while (ws.bufferedAmount > 1024 * 1024) {
+		while (ws.bufferedAmount > 4096 * 1024) {
 			if (ws.readyState !== 1) break;
-			await new Promise((r) => setTimeout(r, 20));
+			await new Promise((r) => setTimeout(r, 5));
 		}
 	}
 }
@@ -6114,7 +6095,6 @@ const HTML_TEMPLATES = {
 									</div>
 								</div>
 							</div>
-
 							<div class="p-4 bg-gray-50/70 dark:bg-amoled-input/30 border border-gray-200/70 dark:border-amoled-border rounded-xl space-y-3">
 								<div class="flex items-center justify-between border-b pb-3 border-gray-200/50 dark:border-amoled-border">
 									<div class="flex items-center gap-2">
@@ -6986,7 +6966,6 @@ ${COMMON_TOAST_HTML}
 			document.querySelectorAll('.frag-preset-card').forEach(card => {
 				card.classList.remove('ring-2', 'ring-blue-500', 'border-blue-500', 'bg-blue-50/50', 'dark:bg-blue-950/40');
 			});
-
 			if (isActive) {
 				if (lenInput) lenInput.value = '200-3000';
 				if (intInput) intInput.value = '1-2';
@@ -6995,7 +6974,6 @@ ${COMMON_TOAST_HTML}
 				}
 				return;
 			}
-
 			const toggle = document.getElementById('input-frag-toggle');
 			if (toggle && !toggle.checked) {
 				toggle.checked = true;
@@ -7413,11 +7391,9 @@ ${COMMON_TOAST_HTML}
 			}
 		}
 let activeRocketBtn = null;
-
 function toggleRocketModal(show) {
 	setModalState('rocket-modal', show);
 }
-
 async function openRocketModal(btn) {
 	if (window.isQuickCreateLocked) {
 		showToast('⏳ لطفاً کمی صبر کنید...', 'error');
@@ -7433,11 +7409,9 @@ async function openRocketModal(btn) {
 	grid.innerHTML = '<div class="col-span-full text-center text-[11px] font-bold text-gray-500 py-4">در حال بررسی مخزن...</div>';
 	hiddenInput.value = '';
 	submitBtn.disabled = false;
-
 	if (!cachedVipList || cachedVipList.length === 0) {
 		await initVipCache();
 	}
-
 	if (cachedVipList && cachedVipList.length > 0) {
 		grid.innerHTML = '';
 		cachedVipList.forEach(function(country) {
@@ -7460,7 +7434,6 @@ async function openRocketModal(btn) {
 		grid.innerHTML = '<div class="col-span-full text-center text-[11px] font-bold text-red-500 py-4">پـروکـسـی اختصاصی موجود نیست</div>';
 	}
 }
-
 async function executeRocketCreate() {
 	const hiddenInput = document.getElementById('rocket-selected-country');
 	const country = hiddenInput.value;
@@ -7469,7 +7442,6 @@ async function executeRocketCreate() {
 		return;
 	}
 	toggleRocketModal(false);
-
 	if (window.isQuickCreateLocked) return;
 	window.isQuickCreateLocked = true;
 	
@@ -7480,21 +7452,17 @@ async function executeRocketCreate() {
 		icon.classList.add('animate-spin');
 		icon.classList.remove('group-hover:-translate-y-1', 'group-hover:translate-x-1');
 	}
-
 	try {
 		const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
 		let randStr = '';
 		for (let i = 0; i < 8; i++) randStr += chars.charAt(Math.floor(Math.random() * chars.length));
 		const username = randStr;
-
 		const lines = cachedVipProxies[country];
 		if (!lines || lines.length === 0) {
 			alert('هیچ پروکسی در این کشور یافت نشد.');
 			return;
 		}
-
 		showToast('🚀 در حال اسکن پینگ ' + lines.length + ' پروکسی از کشور ' + country + '...');
-
 		const controller = new AbortController();
 		let successProxies = [];
 		
@@ -7513,16 +7481,13 @@ async function executeRocketCreate() {
 				}
 			} catch(e) {}
 		});
-
 		const timeoutPromise = new Promise(resolve => setTimeout(resolve, 12000));
 		await Promise.race([Promise.all(testPromises), timeoutPromise]);
 		controller.abort();
-
 		if (successProxies.length === 0) {
 			alert('خطا: هیچ پروکسی سالمی با پینگ موفق در این کشور یافت نشد.');
 			return;
 		}
-
 		successProxies.sort((a, b) => a.ping - b.ping);
 		const bestProxy = successProxies[0].proxy;
 		
@@ -7557,9 +7522,7 @@ async function executeRocketCreate() {
 			selectedIps = shuffledIps.slice(0, 30); 
 		}
 		const ipsStr = selectedIps.join('\\n');
-
 		const finalSocks5 = JSON.stringify([{ proxy: bestProxy, country: country }]);
-
 		const response = await fetch('/api/users', {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
@@ -7571,7 +7534,6 @@ async function executeRocketCreate() {
 				user_socks5: finalSocks5, auto_rotate_user_proxy: 1, connection_type: "vless", enable_direct: false
 			})
 		});
-
 		if (response.ok) {
 			showToast('🚀 کاربر تک کشوره با بهترین پینگ با موفقیت ایجاد شد.');
 			await loadUsers(true);
@@ -7797,7 +7759,6 @@ async function executeRocketCreate() {
 					
 					window.smoothCache[u.username] = cache;
 				});
-
 				window.allUsers = users;
 				const serverTime = data.serverTime || Date.now();
 				window.lastServerTime = serverTime;
@@ -8165,7 +8126,6 @@ async function executeRocketCreate() {
 								remaining -= 5;
 							}
 						}
-
 						let flagSizeClass = 'text-base';
 						if (numFlags > 12) flagSizeClass = 'text-[9px]';
 						else if (numFlags >= 9) flagSizeClass = 'text-[10px]';
@@ -8548,7 +8508,6 @@ async function executeRocketCreate() {
 			if (ssEnabled) selectedProtocols.push('shadowsocks');
 			const connection_type = selectedProtocols.join(',');
 			const username = document.getElementById('input-name').value.trim();
-
 			const highlightError = () => {
 				if (typeof window.switchUserTab === 'function') window.switchUserTab('tab-user-info');
 				setTimeout(() => {
@@ -8567,14 +8526,12 @@ async function executeRocketCreate() {
 					}, 1500);
 				}
 			};
-
 			if (!username) {
 				highlightError();
 				alert('⚠️ وارد کردن نام کاربری الزامی است!');
 				updateSubmitBtnState(isEditMode ? 'ذخیره تغییرات' : 'ایجاد کاربر', false);
 				return;
 			}
-
 			const usernameRegex = /^[a-zA-Z0-9_-]+$/;
 			if (!usernameRegex.test(username)) {
 				highlightError();
@@ -8649,7 +8606,6 @@ async function executeRocketCreate() {
 			const fingerprint = document.getElementById('fingerprint-select').value;
 			const url = isEditMode ? '/api/users/' + encodeURIComponent(editingUsername) : '/api/users';
 			const method = isEditMode ? 'PUT' : 'POST';
-
 			// محاسبه تعداد کانفیگ‌ها
 			let numIps = ips ? ips.split('\\n').filter(p => p.trim().length > 0).length : 1;
 			if (numIps === 0) numIps = 1;
@@ -8659,7 +8615,6 @@ async function executeRocketCreate() {
 			if (enable_direct) numProxies += 1;
 			if (numProxies === 0) numProxies = 1;
 			let totalConfigs = 3 + (numProxies * numIps * numPorts * numProto);
-
 			try {
 				const response = await fetch(url, {
 					method: method,
@@ -9184,7 +9139,6 @@ links.push('vle' + 'ss://' + (user.uuid || '') + '@0.0.0.0:1?encryption=none&sec
 						if (user.tls_mask) userFrag += "&mask=" + encodeURIComponent(user.tls_mask);
 						
 						const tlsParams = isTlsPort ? ("&insecure=0&fp=" + fp + "&allowInsecure=0&sni=" + host) : "";
-
 						if (enableVless) {
 							const remark = "ZEUS | " + proxy.flagEmoji + " | " + user.username;
 							links.push('vle' + 'ss://' + (user.uuid || '') + '@' + ip + ':' + portStr + '?path=' + proxy.currentDynPath + '&security=' + tlsVal + '&encryption=none&host=' + host + '&type=ws' + tlsParams + userFrag + '#' + encodeURIComponent(remark));
@@ -9547,7 +9501,6 @@ async function testUserSocksProxy() {
 	window.proxyPingMap = {};
 	const autoRotateCheck = document.getElementById('input-auto-rotate-user-proxy');
 	const isAutoRotate = autoRotateCheck ? autoRotateCheck.checked : false;
-
 	for (let idx = 0; idx < window.proxyFieldsData.length; idx++) {
 		const resultSpan = document.getElementById('proxy-ping-label-' + idx);
 		const proxyStr = (window.proxyFieldsData[idx] || "").trim();
@@ -9561,17 +9514,14 @@ async function testUserSocksProxy() {
 			}
 		}
 	}
-
 	const testTasks = window.proxyFieldsData.map(async (val, idx) => {
 		let proxyStr = (val || "").trim();
 		if (!proxyStr) return;
-
 		let resultSpan = document.getElementById('proxy-ping-label-' + idx);
 		if (resultSpan) {
 			resultSpan.innerText = 'در حال تست...';
 			resultSpan.className = 'text-[10px] font-bold text-amber-500 block mt-0.5 text-center';
 		}
-
 		const checkProxy = async (targetProxy) => {
 			const controller = new AbortController();
 			const timeoutId = setTimeout(() => controller.abort(), 10000);
@@ -9590,9 +9540,7 @@ async function testUserSocksProxy() {
 				return { ok: false, error: e.name === 'AbortError' ? 'تایم‌اوت' : 'خطا در ارتباط' };
 			}
 		};
-
 		let testRes = await checkProxy(proxyStr);
-
 		if (testRes.ok && testRes.data.success) {
 			resultSpan = document.getElementById('proxy-ping-label-' + idx);
 			const flag = typeof getFlagEmoji === 'function' ? getFlagEmoji(testRes.data.country) : '🌐';
@@ -9678,9 +9626,7 @@ async function testUserSocksProxy() {
 			}
 		}
 	});
-
 	await Promise.all(testTasks);
-
 	if (btn) {
 		btn.disabled = false;
 		btn.innerText = 'تست پـروکـسـی';
@@ -9804,13 +9750,11 @@ async function testUserSocksProxy() {
 					if (!cachedVipList || cachedVipList.length === 0) {
 						await initVipCache();
 					}
-
 					for (const u of validBackupUsers) {
 						currentStep++;
 						if (importBtn) {
 							importBtn.innerText = '⏳ بازیابی (' + currentStep + '/' + validBackupUsers.length + ')';
 						}
-
 						if (u.user_socks5) {
 							try {
 								if (u.user_socks5.trim().startsWith("[")) {
@@ -9845,7 +9789,6 @@ async function testUserSocksProxy() {
 								}
 							} catch(e) {}
 						}
-
 						const userDataPayload = {
 							username: u.username,
 							uuid: u.uuid,
@@ -9882,7 +9825,6 @@ async function testUserSocksProxy() {
 							enable_direct: u.enable_direct !== undefined ? u.enable_direct : 1,
 							connection_type: u.connection_type
 						};
-
 						const exists = existingUsernames.has(u.username);
 						if (exists) {
 							if (overwrite) {
@@ -10300,7 +10242,6 @@ function applySelectedIps() {
 				setTimeout(runGlobalProxyScanner, waitTime);
 			}
 		}
-
 		window.hasShownLoopWarning = false;
 		async function checkLoopWarning() {
 			if (window.hasShownLoopWarning) return;
@@ -10342,7 +10283,6 @@ function applySelectedIps() {
 			} catch (e) {
 			}
 		}
-
 		document.addEventListener('DOMContentLoaded', () => {
 			if (window.location.search.includes('t=')) {
 				window.history.replaceState(null, '', window.location.pathname);
@@ -10359,13 +10299,11 @@ function applySelectedIps() {
 				freeModal.classList.add('opacity-100', 'pointer-events-auto');
 				freeCard.classList.remove('opacity-0', 'scale-95');
 				freeCard.classList.add('opacity-100', 'scale-100');
-
 				const oldBtn = document.getElementById('free-panel-close-btn');
 				if (oldBtn) {
 					const newBtn = oldBtn.cloneNode(true);
 					oldBtn.parentNode.replaceChild(newBtn, oldBtn);
 				}
-
 				const btn = document.getElementById('free-panel-close-btn');
 				const prog = document.getElementById('free-panel-progress');
 				
@@ -10374,12 +10312,10 @@ function applySelectedIps() {
 				let animFrame = null;
 				let secretClickCount = 0;
 				let lastClickTime = 0;
-
 				const triggerClose = () => {
 					stopHold();
 					closeFreePanelWarning();
 				};
-
 				const stopHold = () => {
 					cancelAnimationFrame(animFrame);
 					if (holdTimer) clearTimeout(holdTimer);
@@ -10387,12 +10323,10 @@ function applySelectedIps() {
 					if (prog) prog.style.width = '0%';
 					if (btn) btn.style.transform = 'scale(1)';
 				};
-
 				const startHold = (e) => {
 					stopHold();
 					startTime = performance.now();
 					if (btn) btn.style.transform = 'scale(0.96)';
-
 					const animate = (time) => {
 						let elapsed = time - startTime;
 						let percent = Math.min((elapsed / 3000) * 100, 100);
@@ -10404,7 +10338,6 @@ function applySelectedIps() {
 					animFrame = requestAnimationFrame(animate);
 					holdTimer = setTimeout(triggerClose, 3000);
 				};
-
 				const handleSecretClick = () => {
 					const now = Date.now();
 					if (now - lastClickTime < 400) {
@@ -10417,7 +10350,6 @@ function applySelectedIps() {
 						triggerClose();
 					}
 				};
-
 				if (btn) {
 					btn.addEventListener('mousedown', startHold);
 					btn.addEventListener('touchstart', startHold, {passive: false});
@@ -10482,7 +10414,6 @@ function applySelectedIps() {
 			window.addEventListener('mousedown', (e) => {
 				window._modalMouseDownTarget = e.target;
 			});
-
 			const formContainer = document.getElementById('create-user-form');
 			if (formContainer) {
 				let touchStartX = 0;
@@ -10888,7 +10819,6 @@ const WORKER_DONATE_URL = "https://si-491177.taile4bcbb.ts.net/donate";
 			const btn = document.getElementById('test-direct-btn');
 			const clientPingEl = document.getElementById('client-to-server-ping');
 			const serverPingEl = document.getElementById('server-to-net-ping');
-
 			if (btn) {
 				btn.disabled = true;
 				btn.innerHTML = '<svg class="w-3.5 h-3.5 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg><span> در حال تست...</span>';
@@ -10897,7 +10827,6 @@ const WORKER_DONATE_URL = "https://si-491177.taile4bcbb.ts.net/donate";
 			clientPingEl.className = 'text-[10px] font-bold text-amber-500';
 			serverPingEl.innerText = 'تست...';
 			serverPingEl.className = 'text-[10px] font-bold text-amber-500';
-
 			let clientPing = '-';
 			try {
 				const startClient = Date.now();
@@ -10915,7 +10844,6 @@ const WORKER_DONATE_URL = "https://si-491177.taile4bcbb.ts.net/donate";
 				clientPingEl.innerText = 'خطا';
 				clientPingEl.className = 'text-[10px] font-bold text-red-500';
 			}
-
 			try {
 				const controller = new AbortController();
 				const timeoutId = setTimeout(() => controller.abort(), 6000);
@@ -10944,7 +10872,6 @@ const WORKER_DONATE_URL = "https://si-491177.taile4bcbb.ts.net/donate";
 				serverPingEl.innerText = 'خطا';
 				serverPingEl.className = 'text-[10px] font-bold text-red-500 text-center';
 			}
-
 			if (btn) {
 				btn.disabled = false;
 				btn.innerHTML = '<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg><span>تست اتصال مستقیم</span>';
@@ -11310,7 +11237,6 @@ links.push('vle' + 'ss://' + (u.uuid || '') + '@0.0.0.0:1?encryption=none&securi
 						if (u.tls_mask) userFrag += "&mask=" + encodeURIComponent(u.tls_mask);
 						
 						const tlsParams = isTlsPort ? ("&insecure=0&fp=" + fp + "&allowInsecure=0&sni=" + host) : "";
-
 						if (enableVless) {
 							const remark = "ZEUS | " + proxy.flagEmoji + " | " + u.username;
 							links.push('vle' + 'ss://' + (u.uuid || '') + '@' + ip + ':' + portStr + '?path=' + proxy.currentDynPath + '&security=' + tlsVal + '&encryption=none&host=' + host + '&type=ws' + tlsParams + userFrag + '#' + encodeURIComponent(remark));
