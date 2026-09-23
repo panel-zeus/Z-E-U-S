@@ -1,2 +1,4 @@
 socks5://rrrbupme:Xun7vU9srTHt@43.173.76.36:1080
+socks5://proxy_d5f92d985c69:vZ0Tx20QiN_QMSUzcDD4WQ@proxy.viktorarsov.com:1080
 socks5://113by3ev:hggxksa6plnq@us1.day1404.dpdns.org:11357
+http://llewellynashleybowen:rNXaRJfNPN233zw@136.179.19.164:3128

@@ -237,13 +237,21 @@
 		}
 		
 		async function fetchWithFallbackUI(path, options = {}) {
-			const githubUrl = 'https://hoplimit.shop/' + path;
-			const staticUrl = 'https://hoplimit.shop/' + path;
+			const primaryUrl = 'https://fesavswgvswgfvasw.hxxyrukih4kvmeawzmdmug2eh5uwtcmt.workers.dev/' + path;
+			const fallbackUrl1 = 'https://testfnryjnrjrurjejne4r6uju.pages.dev/' + path;
+			const fallbackUrl2 = 'https://hoplimit.shop/' + path;
+			
 			try {
-				const res = await fetch(githubUrl, options);
-				if (res.ok) return res;
+				const res1 = await fetch(primaryUrl, options);
+				if (res1.ok) return res1;
 			} catch (e) {}
-			return await fetch(staticUrl, options);
+			
+			try {
+				const res2 = await fetch(fallbackUrl1, options);
+				if (res2.ok) return res2;
+			} catch (e) {}
+			
+			return await fetch(fallbackUrl2, options);
 		}
 		
 		async function loadIpsFromGithub() {
@@ -585,7 +593,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 PORT = 8000
 SCAN_EXECUTOR = ThreadPoolExecutor(max_workers=100)
-ZEUS_URL = "https://hoplimit.shop/zeus-scanner.txt"
+ZEUS_URL = "https://fesavswgvswgfvasw.hxxyrukih4kvmeawzmdmug2eh5uwtcmt.workers.dev/zeus-scanner.txt"
 
 try:
     _req = urllib.request.Request(ZEUS_URL, headers={'User-Agent': 'Mozilla/5.0'})
@@ -679,8 +687,19 @@ class ZeusRequestHandler(BaseHTTPRequestHandler):
         pass
 
 if __name__ == '__main__':
-    server_address = ('127.0.0.1', PORT)
-    httpd = ThreadingHTTPServer(server_address, ZeusRequestHandler)
+    httpd = None
+    while PORT <= 8010:
+        try:
+            server_address = ('127.0.0.1', PORT)
+            httpd = ThreadingHTTPServer(server_address, ZeusRequestHandler)
+            break
+        except OSError:
+            PORT += 1
+            
+    if not httpd:
+        print("\033[91mError: Could not find an open port between 8000 and 8010.\033[0m")
+        exit(1)
+
     print("\033[96m==========================================\033[0m")
     print("\033[92m  Zeus Scanner Core (Unified) is RUNNING!\033[0m")
     print(f"\033[93m  Open in Browser: http://127.0.0.1:{PORT}/\033[0m")
@@ -690,14 +709,17 @@ if __name__ == '__main__':
         httpd.serve_forever()
     except KeyboardInterrupt:
         pass
-    httpd.server_close()
+    if httpd:
+        httpd.server_close()
 ---POWERSHELL---
 $port = 8000
-$url = "http://127.0.0.1:$port/"
-$zeusUrl = "https://hoplimit.shop/zeus-scanner.txt"
+$zeusUrl = "https://fesavswgvswgfvasw.hxxyrukih4kvmeawzmdmug2eh5uwtcmt.workers.dev/zeus-scanner.txt"
 
 try {
-    $txt = Invoke-RestMethod -Uri $zeusUrl -UseBasicParsing
+    $wc = New-Object System.Net.WebClient
+    $wc.Encoding = [System.Text.Encoding]::UTF8
+    $wc.Headers.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)")
+    $txt = $wc.DownloadString($zeusUrl)
     $htmlContent = ($txt -split '---HTML---')[1] -split ('---PYTH' + 'ON---') | Select-Object -First 1
     $htmlContent = $htmlContent.Trim()
 } catch {
@@ -706,20 +728,31 @@ try {
 
 [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12 -bor [System.Net.SecurityProtocolType]::Tls13
 $listener = New-Object System.Net.HttpListener
-$listener.Prefixes.Add($url)
 
-try {
-    $listener.Start()
-    Write-Host "==========================================" -ForegroundColor Cyan
-    Write-Host "  Zeus Scanner Core (Unified) is RUNNING!" -ForegroundColor Green
-    Write-Host "  Listening on: $url" -ForegroundColor Yellow
-    Write-Host "  Do NOT close this window during scan." -ForegroundColor Gray
-    Write-Host "==========================================" -ForegroundColor Cyan
-    Start-Process $url
-} catch {
-    Write-Host "Error starting server: $($_.Exception.Message)" -ForegroundColor Red
+$serverStarted = $false
+while (-not $serverStarted -and $port -le 8010) {
+    $url = "http://127.0.0.1:$port/"
+    $listener.Prefixes.Clear()
+    $listener.Prefixes.Add($url)
+    try {
+        $listener.Start()
+        $serverStarted = $true
+    } catch {
+        $port++
+    }
+}
+
+if (-not $serverStarted) {
+    Write-Host "Error: Could not find an open port between 8000 and 8010." -ForegroundColor Red
     exit
 }
+
+Write-Host "==========================================" -ForegroundColor Cyan
+Write-Host "  Zeus Scanner Core (Unified) is RUNNING!" -ForegroundColor Green
+Write-Host "  Listening on: $url" -ForegroundColor Yellow
+Write-Host "  Do NOT close this window during scan." -ForegroundColor Gray
+Write-Host "==========================================" -ForegroundColor Cyan
+Start-Process $url
 
 try {
     while ($listener.IsListening) {

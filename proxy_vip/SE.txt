@@ -1,2 +1,1 @@
 socks5://3zmwk1nt:ailvldlpiy8u@se.miors.art:59501
-socks5://lfzuqeqx:IcmcOccNyUD6@138.124.18.178:2080

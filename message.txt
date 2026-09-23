@@ -1,28 +1,46 @@
-VERSION=2.2.2
+VERSION=2.2.5
 <div class="text-center">
     
-    <div class="relative inline-flex items-center justify-center mb-1 mt-1">
-        <span class="absolute inset-0 rounded-full bg-blue-500/40 animate-ping pointer-events-none"></span>
-        <div class="relative z-10 inline-flex items-center justify-center w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 shadow-[0_0_8px_rgba(59,130,246,0.3)]">
-            <svg class="w-4 h-4 drop-shadow-sm" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+    <!-- هدر: آیکون و متن در یک ردیف -->
+    <div class="flex items-center justify-center gap-2 mb-4 mt-1">
+        <div class="relative inline-flex items-center justify-center flex-shrink-0">
+            <span class="absolute inset-0 rounded-full bg-blue-500/40 animate-ping pointer-events-none"></span>
+            <div class="relative z-10 inline-flex items-center justify-center w-7 h-7 rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 shadow-[0_0_8px_rgba(59,130,246,0.3)]">
+                <svg class="w-3.5 h-3.5 drop-shadow-sm" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+            </div>
         </div>
+        <h3 class="font-black text-sm text-gray-900 dark:text-white leading-none mt-0.5">نسخه 2.2.5 پنل منتشر شد</h3>
     </div>
     
-    <h3 class="font-black text-sm text-gray-900 dark:text-white mb-2">نسخه 2.2.2 پنل منتشر شد</h3>
-    
     <div class="space-y-1.5 mb-2.5">
-        <!-- کادر پروتکل شدوساکس -->
+        <!-- کادر رابط کاربری موبایل -->
         <div class="group flex items-center gap-2 p-1.5 bg-white dark:bg-amoled-input border border-gray-200 dark:border-amoled-border rounded-lg shadow-sm text-right cursor-default">
-            <div class="relative flex items-center justify-center w-6 h-6 rounded bg-yellow-50 dark:bg-yellow-900/30 text-yellow-500 flex-shrink-0">
-                <span class="absolute -inset-1 rounded-full bg-yellow-500/20 animate-ping opacity-75 group-hover:opacity-100 pointer-events-none"></span>
-                <svg class="w-3.5 h-3.5 transition-transform duration-500 group-hover:rotate-12 drop-shadow-[0_0_6px_rgba(234,179,8,0.8)] relative z-10" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24">
-                    <path d="M12 2L2 7l10 5 10-5-10-5z"></path><path d="M2 17l10 5 10-5"></path><path d="M2 12l10 5 10-5"></path>
+            <div class="relative flex items-center justify-center w-6 h-6 rounded bg-emerald-50 dark:bg-emerald-900/30 text-emerald-500 flex-shrink-0">
+                <span class="absolute -inset-1 rounded-full bg-emerald-500/20 animate-ping opacity-75 group-hover:opacity-100 pointer-events-none"></span>
+                <svg class="w-3.5 h-3.5 transition-transform duration-500 group-hover:scale-110 drop-shadow-[0_0_6px_rgba(16,185,129,0.8)] relative z-10" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24">
+                    <path d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z"></path>
                 </svg>
             </div>
             <div>
-                <h4 class="font-black text-[10px] text-gray-800 dark:text-zinc-200">پروتکل شدوساکس (Shadowsocks) اضافه شد</h4>
+                <h4 class="font-black text-[10px] text-gray-800 dark:text-zinc-200">رابط کاربری بهینه موبایل</h4>
                 <p class="text-[8px] text-gray-500 dark:text-zinc-400 mt-0.5 leading-tight font-medium">
-                    پروتکل امن و سبک برای دور زدن فیلترینگ با پشتیبانی در کلاینت‌های سازگار.
+                    بازطراحی چیدمان و منوها برای مدیریت راحت‌تر و سریع‌تر پنل با گوشی.
+                </p>
+            </div>
+        </div>
+
+        <!-- کادر حل مشکل اینستاگرام و تلگرام -->
+        <div class="group flex items-center gap-2 p-1.5 bg-white dark:bg-amoled-input border border-gray-200 dark:border-amoled-border rounded-lg shadow-sm text-right cursor-default">
+            <div class="relative flex items-center justify-center w-6 h-6 rounded bg-sky-50 dark:bg-sky-900/30 text-sky-500 flex-shrink-0">
+                <span class="absolute -inset-1 rounded-full bg-sky-500/20 animate-ping opacity-75 group-hover:opacity-100 pointer-events-none"></span>
+                <svg class="w-3.5 h-3.5 transition-transform duration-500 group-hover:scale-110 drop-shadow-[0_0_6px_rgba(14,165,233,0.8)] relative z-10" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24">
+                    <polygon points="5 3 19 12 5 21 5 3"></polygon>
+                </svg>
+            </div>
+            <div>
+                <h4 class="font-black text-[10px] text-gray-800 dark:text-zinc-200">حل مشکل اینستاگرام و تماس تلگرام</h4>
+                <p class="text-[8px] text-gray-500 dark:text-zinc-400 mt-0.5 leading-tight font-medium">
+                    رفع فریز شدن ویدیوها (ریلز) و پایداری تماس‌ها در کانفیگ‌های مستقیم.
                 </p>
             </div>
         </div>
@@ -51,7 +69,7 @@ VERSION=2.2.2
                     <svg class="w-4 h-4 drop-shadow-sm text-pink-600 dark:text-pink-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z"></path></svg>
                     <div class="text-right">
                         <div class="font-black text-gray-800 dark:text-zinc-200 text-[9px] truncate">Bettbox</div>
-                        <div class="text-[7px] text-pink-600 dark:text-pink-500 font-bold mt-0.5">Android (YAML)</div>
+                        <div class="text-[7px] text-pink-600 dark:text-pink-500 font-bold mt-0.5">Android</div>
                     </div>
                 </div>
                 <div class="bg-pink-50 dark:bg-pink-950/30 text-pink-600 dark:text-pink-400 p-1 rounded group-hover:bg-pink-100 dark:group-hover:bg-pink-900/50 transition-colors flex-shrink-0">
@@ -65,7 +83,7 @@ VERSION=2.2.2
                     <svg class="w-4 h-4 drop-shadow-sm text-pink-600 dark:text-pink-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path></svg>
                     <div class="text-right">
                         <div class="font-black text-gray-800 dark:text-zinc-200 text-[9px] truncate">Clash Verge</div>
-                        <div class="text-[7px] text-pink-600 dark:text-pink-500 font-bold mt-0.5">Windows (YAML)</div>
+                        <div class="text-[7px] text-pink-600 dark:text-pink-500 font-bold mt-0.5">Windows</div>
                     </div>
                 </div>
                 <div class="bg-pink-50 dark:bg-pink-950/30 text-pink-600 dark:text-pink-400 p-1 rounded group-hover:bg-pink-100 dark:group-hover:bg-pink-900/50 transition-colors flex-shrink-0">
@@ -82,7 +100,7 @@ VERSION=2.2.2
                     </svg>
                     <div class="text-right">
                         <div class="font-black text-gray-800 dark:text-zinc-200 text-[9px] truncate">Clash Mi</div>
-                        <div class="text-[7px] text-pink-600 dark:text-pink-500 font-bold mt-0.5">iOS (YAML)</div>
+                        <div class="text-[7px] text-pink-600 dark:text-pink-500 font-bold mt-0.5">iOS</div>
                     </div>
                 </div>
                 <div class="bg-pink-50 dark:bg-pink-950/30 text-pink-600 dark:text-pink-400 p-1 rounded group-hover:bg-pink-100 dark:group-hover:bg-pink-900/50 transition-colors flex-shrink-0">
@@ -107,7 +125,7 @@ VERSION=2.2.2
         <!-- دکمه‌های کلاینت‌های معمولی و بهینه‌ساز (دو ستونی) -->
         <div class="grid grid-cols-2 gap-1.5 mb-2 mt-1.5">
             <!-- PattNG -->
-            <a href="https://github.com/patterniha/PattNG/releases/download/2.3.8-P50/PattNG_2.3.8-P50-fdroid_universal.apk" class="flex items-center justify-between p-1.5 bg-white dark:bg-amoled-input border border-gray-200 dark:border-amoled-border rounded-lg hover:border-green-400 dark:hover:border-green-500/50 transition-all duration-300 shadow-sm group">
+            <a href="https://github.com/patterniha/PattNG/releases/download/2.3.9-P52/PattNG_2.3.9-P52-fdroid_universal.apk" class="flex items-center justify-between p-1.5 bg-white dark:bg-amoled-input border border-gray-200 dark:border-amoled-border rounded-lg hover:border-green-400 dark:hover:border-green-500/50 transition-all duration-300 shadow-sm group">
                 <div class="flex items-center gap-1">
                     <svg class="w-4 h-4 drop-shadow-sm text-green-600 dark:text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z"></path></svg>
                     <div class="text-right">
@@ -121,7 +139,7 @@ VERSION=2.2.2
             </a>
 
             <!-- v2rayNG -->
-            <a href="https://github.com/2dust/v2rayNG/releases/download/2.3.8/v2rayNG_2.3.8-fdroid_universal.apk" class="flex items-center justify-between p-1.5 bg-white dark:bg-amoled-input border border-gray-200 dark:border-amoled-border rounded-lg hover:border-teal-400 dark:hover:border-teal-500/50 transition-all duration-300 shadow-sm group">
+            <a href="https://github.com/2dust/v2rayNG/releases/download/2.3.9/v2rayNG_2.3.9-fdroid_universal.apk" class="flex items-center justify-between p-1.5 bg-white dark:bg-amoled-input border border-gray-200 dark:border-amoled-border rounded-lg hover:border-teal-400 dark:hover:border-teal-500/50 transition-all duration-300 shadow-sm group">
                 <div class="flex items-center gap-1">
                     <svg class="w-4 h-4 drop-shadow-sm text-teal-600 dark:text-teal-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8V4H8M4 8h16v12a2 2 0 01-2 2H6a2 2 0 01-2-2V8zM9 13v2M15 13v2M2 14h2M20 14h2"></path></svg>
                     <div class="text-right">
@@ -189,7 +207,7 @@ VERSION=2.2.2
         <div class="flex items-start gap-1 p-1.5 bg-orange-50 dark:bg-orange-950/30 border border-orange-200 dark:border-orange-800/60 rounded-lg shadow-sm mt-1.5">
             <svg class="w-3.5 h-3.5 flex-shrink-0 text-orange-600 dark:text-orange-500 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
             <div class="text-[8.5px] text-orange-800 dark:text-orange-400 font-bold text-justify leading-tight">
-                <span class="font-black text-orange-700 dark:text-orange-500">هشدار مهم:</span> برای اتصال بی‌نقص کانفیگ‌ها، پنل باید به نسخه <span class="bg-orange-100 dark:bg-orange-900/50 px-1 rounded font-black text-orange-700 dark:text-orange-300 mx-0.5" dir="ltr">2.2.2</span> یا جدیدتر آپدیت شده باشد.
+                <span class="font-black text-orange-700 dark:text-orange-500">هشدار مهم:</span> برای اتصال بی‌نقص کانفیگ‌ها، پنل باید به نسخه <span class="bg-orange-100 dark:bg-orange-900/50 px-1 rounded font-black text-orange-700 dark:text-orange-300 mx-0.5" dir="ltr">2.2.5</span> یا جدیدتر آپدیت شده باشد.
             </div>
         </div>
     </div>
