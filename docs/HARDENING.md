@@ -63,21 +63,10 @@ node tools/harden.mjs Source.js Source-hardened.js
 # deploy Source-hardened.js instead of Source.js
 ```
 
-Or use the one-command installer:
-
-```bash
-node wizard/zeus-wizard.mjs
-```
-
-The wizard walks through: API token → account → worker name → workers.dev subdomain → D1 database →
-(downloading and hardening the latest upstream source when needed) → module upload with the `DB` D1
-binding → subdomain enable → health check → optional custom domain attach. It never stores the
-token. `--prepare-only` runs just the source preparation offline.
-
 ## Operational notes
 
 - **Never press "update panel" inside a hardened deployment**: `/api/update-panel` re-downloads the
   original plaintext `Source.js` and undoes the hardening. Re-deploy the hardened build instead.
-- Re-run the hardener whenever `Source.js` changes (the wizard does this automatically).
-- Use a neutral worker name (the wizard defaults to `web-panel`).
-- `workers.dev` is filtered in some regions; the wizard can attach a custom domain at the end.
+- Re-run the hardener whenever `Source.js` changes.
+- Use a neutral worker name (e.g. `web-panel`).
+- `workers.dev` is filtered in some regions; consider attaching a custom domain instead.
