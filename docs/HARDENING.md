@@ -58,7 +58,11 @@ The hardened build was verified against the original with a differential harness
 
 ## Usage
 
+The hardener has three npm dependencies (`acorn`, `acorn-walk`, `eslint-scope`). The repo
+ships no `package.json`, so install them once in the repo root:
+
 ```bash
+npm install acorn acorn-walk eslint-scope
 node tools/harden.mjs Source.js Source-hardened.js
 # deploy Source-hardened.js instead of Source.js
 ```
