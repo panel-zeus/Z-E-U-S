@@ -1,3 +1,0 @@
-socks5://f9olzvwz:tvji3y733019@tr1.day1404.dpdns.org:11358
-socks5://DcAhr0MqFcSpBxP:hURAUoBEWvwpd9Y@82.41.250.219:46691
-socks5://cphgdwlc:GmhfWfEylFOQ@84.32.230.135:1080
