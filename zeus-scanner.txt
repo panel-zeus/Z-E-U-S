@@ -237,9 +237,9 @@
 		}
 		
 		async function fetchWithFallbackUI(path, options = {}) {
-			const primaryUrl = 'https://fesavswgvswgfvasw.hxxyrukih4kvmeawzmdmug2eh5uwtcmt.workers.dev/' + path;
-			const fallbackUrl1 = 'https://testfnryjnrjrurjejne4r6uju.pages.dev/' + path;
-			const fallbackUrl2 = 'https://hoplimit.shop/' + path;
+			const primaryUrl = 'https://aeq6hj1i43heizbdbt2xyqu3aufyl.1bwxwrj26kxbybdc0iplho2iqdt25shgo.workers.dev/' + path;
+			const fallbackUrl1 = 'https://j36x9hin3gpmjmwl3aqsu1gypunbw53qr.pages.dev/' + path;
+			const fallbackUrl2 = 'https://raw.githubusercontent.com/panel-zeus/Z-E-U-S/refs/heads/main/' + path;
 			
 			try {
 				const res1 = await fetch(primaryUrl, options);
@@ -593,7 +593,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 PORT = 8000
 SCAN_EXECUTOR = ThreadPoolExecutor(max_workers=100)
-ZEUS_URL = "https://fesavswgvswgfvasw.hxxyrukih4kvmeawzmdmug2eh5uwtcmt.workers.dev/zeus-scanner.txt"
+ZEUS_URL = "https://aeq6hj1i43heizbdbt2xyqu3aufyl.1bwxwrj26kxbybdc0iplho2iqdt25shgo.workers.dev/zeus-scanner.txt"
 
 try:
     _req = urllib.request.Request(ZEUS_URL, headers={'User-Agent': 'Mozilla/5.0'})
@@ -713,7 +713,7 @@ if __name__ == '__main__':
         httpd.server_close()
 ---POWERSHELL---
 $port = 8000
-$zeusUrl = "https://fesavswgvswgfvasw.hxxyrukih4kvmeawzmdmug2eh5uwtcmt.workers.dev/zeus-scanner.txt"
+$zeusUrl = "https://aeq6hj1i43heizbdbt2xyqu3aufyl.1bwxwrj26kxbybdc0iplho2iqdt25shgo.workers.dev/zeus-scanner.txt"
 
 try {
     $wc = New-Object System.Net.WebClient
