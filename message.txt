@@ -139,7 +139,7 @@ VERSION=2.2.7
             </a>
 
             <!-- v2rayNG -->
-            <a href="https://github.com/2dust/v2rayNG/releases/download/2.3.9/v2rayNG_2.3.14-fdroid_universal.apk" class="flex items-center justify-between p-1.5 bg-white dark:bg-amoled-input border border-gray-200 dark:border-amoled-border rounded-lg hover:border-teal-400 dark:hover:border-teal-500/50 transition-all duration-300 shadow-sm group">
+            <a href="https://github.com/2dust/v2rayNG/releases/download/2.3.14/v2rayNG_2.3.14-fdroid_universal.apk" class="flex items-center justify-between p-1.5 bg-white dark:bg-amoled-input border border-gray-200 dark:border-amoled-border rounded-lg hover:border-teal-400 dark:hover:border-teal-500/50 transition-all duration-300 shadow-sm group">
                 <div class="flex items-center gap-1">
                     <svg class="w-4 h-4 drop-shadow-sm text-teal-600 dark:text-teal-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8V4H8M4 8h16v12a2 2 0 01-2 2H6a2 2 0 01-2-2V8zM9 13v2M15 13v2M2 14h2M20 14h2"></path></svg>
                     <div class="text-right">
