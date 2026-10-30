@@ -1,9 +1,36 @@
 [
   {
+    "name": "AD.txt"
+  },
+  {
+    "name": "AL.txt"
+  },
+  {
     "name": "CA.txt"
   },
   {
     "name": "DE.txt"
+  },
+  {
+    "name": "FI.txt"
+  },
+  {
+    "name": "FR.txt"
+  },
+  {
+    "name": "GB.txt"
+  },
+  {
+    "name": "IT.txt"
+  },
+  {
+    "name": "MC.txt"
+  },
+  {
+    "name": "NO.txt"
+  },
+  {
+    "name": "SE.txt"
   },
   {
     "name": "TH.txt"
