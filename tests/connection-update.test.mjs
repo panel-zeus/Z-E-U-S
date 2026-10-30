@@ -110,3 +110,25 @@ test('compact never enables an account protocol that was disabled', async t => {
   const links = nativeLinks(Buffer.from(await r.text(),'base64').toString());
   assert(links.length > 0); assert(links.every(uri => uri.startsWith('trojan://')));
 });
+
+test('upstream IPv6 and multiple ECH profiles retain distinct protocol and port labels', async t => {
+  const f = fixture(t, {
+    connection_type: 'vless,trojan,shadowsocks', port: '443',
+    ips: '2001:db8::1', enable_direct: 1,
+    ech: 'example.test+udp://resolver.invalid,example.test+https://resolver.invalid/dns-query',
+  }, { env: { HTTP_TRANSPORTS: 'false' } });
+  const response = await f.subscription('feed', 'false');
+  assert.equal(response.status, 200);
+  const links = nativeLinks(Buffer.from(await response.text(), 'base64').toString());
+  assert.equal(links.length, 6);
+  const labels = new Set();
+  for (const uri of links) {
+    const url = new URL(uri);
+    assert.equal(url.hostname, '[2001:db8::1]');
+    const label = decodeURIComponent(url.hash.slice(1));
+    assert.match(label, / \| (VLESS|Trojan|SS) \| 443 \| ECH-(UDP|DOH)-1$/);
+    labels.add(label);
+    if (url.protocol !== 'ss:') assert.match(url.searchParams.get('ech'), /^example\.test\+/);
+  }
+  assert.equal(labels.size, 6);
+});
