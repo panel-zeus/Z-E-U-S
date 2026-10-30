@@ -125,7 +125,7 @@ VERSION=2.2.7
         <!-- دکمه‌های کلاینت‌های معمولی و بهینه‌ساز (دو ستونی) -->
         <div class="grid grid-cols-2 gap-1.5 mb-2 mt-1.5">
             <!-- PattNG -->
-            <a href="https://github.com/patterniha/PattNG/releases/download/2.3.13-P70/PattNG_2.3.13-P70-fdroid_universal.apk" class="flex items-center justify-between p-1.5 bg-white dark:bg-amoled-input border border-gray-200 dark:border-amoled-border rounded-lg hover:border-green-400 dark:hover:border-green-500/50 transition-all duration-300 shadow-sm group">
+            <a href="https://github.com/patterniha/PattNG/releases/download/2.3.13-P70/PattNG_fdroid_2.3.13-P70_universal.apk" class="flex items-center justify-between p-1.5 bg-white dark:bg-amoled-input border border-gray-200 dark:border-amoled-border rounded-lg hover:border-green-400 dark:hover:border-green-500/50 transition-all duration-300 shadow-sm group">
                 <div class="flex items-center gap-1">
                     <svg class="w-4 h-4 drop-shadow-sm text-green-600 dark:text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z"></path></svg>
                     <div class="text-right">
