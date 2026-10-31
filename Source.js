@@ -152,72 +152,54 @@ async function getCachedIps() {
 }
 
 function getRandomIps(cachedIpsData, operator, count) {
-	let repoType = "ipv4";
-	if (operator && typeof operator === "string") {
-		if (operator.includes("|")) {
-			repoType = operator.split("|")[1].trim();
-		} else if (["domain", "mixed", "ipv4", "ipv6", "ip"].includes(operator)) {
-			repoType = operator;
-		}
-	}
-	if (repoType === "ip") repoType = "ipv4";
+    let repoType = "ipv4";
+    if (operator && typeof operator === "string") {
+        if (operator.includes("|")) {
+            repoType = operator.split("|")[1].trim();
+        } else if (["domain", "mixed", "ipv4", "ipv6", "ip"].includes(operator)) {
+            repoType = operator;
+        }
+    }
+    let types;
+    if (repoType === "mixed") types = ["ipv4", "ipv6", "domain"];
+    else if (repoType === "ip") types = ["ipv4"];
+    else types = repoType.split("+").map(s => s.trim()).filter(t => t === "ipv4" || t === "ipv6" || t === "domain");
+    if (types.length === 0) types = ["ipv4"];
 
-	const ipsList = [...new Set(cachedIpsData.ips || cachedIpsData.all || [])];
-	const ipv6List = [...new Set(cachedIpsData.ipv6 || [])];
-	const domList = [...new Set(cachedIpsData.domains || [])];
-
-	const pickRandom = (list, num) => {
-		if (list.length === 0) return [];
-		if (num >= list.length) return list.slice();
-		const shuffled = list.slice();
-		for (let i = shuffled.length - 1; i > 0; i--) {
-			const j = Math.floor(Math.random() * (i + 1));
-			[shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
-		}
-		return shuffled.slice(0, num);
-	};
-
-	let availableIps = [];
-
-	if (repoType === "domain") {
-		availableIps = pickRandom(domList, count);
-	} else if (repoType === "ipv6") {
-		availableIps = pickRandom(ipv6List, count);
-	} else if (repoType === "mixed") {
-		const activeLists = [];
-		if (ipsList.length > 0) activeLists.push(ipsList);
-		if (ipv6List.length > 0) activeLists.push(ipv6List);
-		if (domList.length > 0) activeLists.push(domList);
-
-		if (activeLists.length > 0) {
-			let targetPerList = Math.floor(count / activeLists.length);
-			let remainder = count % activeLists.length;
-			
-			let demands = activeLists.map((_, i) => targetPerList + (i < remainder ? 1 : 0));
-			
-			for (let i = 0; i < activeLists.length; i++) {
-				if (activeLists[i].length < demands[i]) {
-					let deficit = demands[i] - activeLists[i].length;
-					demands[i] = activeLists[i].length;
-					let others = activeLists.length - 1;
-					if(others > 0) {
-					   for (let j = 0; j < activeLists.length; j++) {
-						   if (i !== j) demands[j] += Math.ceil(deficit / others);
-					   }
-					}
-				}
-			}
-			let mixed = [];
-			for (let i = 0; i < activeLists.length; i++) {
-				mixed.push(...pickRandom(activeLists[i], demands[i]));
-			}
-			availableIps = pickRandom(mixed, mixed.length);
-		}
-	} else {
-		availableIps = pickRandom(ipsList, count);
-	}
-	
-	return availableIps;
+    const pools = {
+        ipv4: [...new Set(cachedIpsData.ips || cachedIpsData.all || [])],
+        ipv6: [...new Set(cachedIpsData.ipv6 || [])],
+        domain: [...new Set(cachedIpsData.domains || [])]
+    };
+    const pickRandom = (list, num) => {
+        if (list.length === 0) return [];
+        if (num >= list.length) return list.slice();
+        const shuffled = list.slice();
+        for (let i = shuffled.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+        }
+        return shuffled.slice(0, num);
+    };
+    const active = types.map(t => pools[t]).filter(list => list.length > 0);
+    const demands = new Array(active.length).fill(0);
+    let left = Math.min(count, active.reduce((sum, list) => sum + list.length, 0));
+    while (left > 0) {
+        let progressed = false;
+        for (let i = 0; i < active.length && left > 0; i++) {
+            if (demands[i] < active[i].length) {
+                demands[i]++;
+                left--;
+                progressed = true;
+            }
+        }
+        if (!progressed) break;
+    }
+    const availableIps = [];
+    for (let i = 0; i < active.length; i++) {
+        if (demands[i] > 0) availableIps.push(...pickRandom(active[i], demands[i]));
+    }
+    return availableIps;
 }
 async function checkAutoRotates(env, ctx) {
 }
@@ -494,7 +476,7 @@ function obfuscateSourceForUpdate(sourceCode) {
 	const verMatch = code.match(verRegex);
 	const fixMatch = code.match(fixRegex);
 
-	const versionStr = verMatch ? verMatch[2] : "2.2.7";
+	const versionStr = verMatch ? verMatch[2] : "2.2.8";
 	const updateFixStr = fixMatch ? fixMatch[2] : "constsCURRENT_VERSION='d.d.d'";
 
 	const xorKey1 = 198;
@@ -3098,15 +3080,7 @@ async function handlevIees(env, storedData = null, ctx = null, request = null) {
 						}
 						return;
 					}
-					if (!isTrojanProto && respHeader) {
-						try { serverSock.send(respHeader); } catch(e) {}
-					}
-					if (port === 443) {
-						setTimeout(() => {
-							try { serverSock.close(); } catch(e) {}
-						}, 100);
-						return;
-					}
+					try { serverSock.close(); } catch (e) {}
 					return;
 				}
 				if (port === 25 || /^(0\.|127\.|10\.|192\.168\.|172\.(1[6-9]|2[0-9]|3[0-1])\.|169\.254\.|localhost$|::1|::ffff:|fd[0-9a-f]{2}:|fe80:)/i.test(addr)) {
@@ -3237,6 +3211,7 @@ async function handlevIees(env, storedData = null, ctx = null, request = null) {
 				serverSock.close();
 			}
 	};
+	
 	const handleWsError = (err) => {
 		if (wsFailed) return;
 		wsFailed = true;
@@ -5428,10 +5403,10 @@ const HTML_TEMPLATES = {
 								<svg class="w-4 h-4 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2m-2-4h.01M17 16h.01"></path></svg>
 								<div class="flex items-center justify-center gap-1">
 									<span>تعداد کانفیگ‌ها</span>
-									<button type="button" onclick="openConfigCountWarning();" class="text-amber-500 hover:text-amber-400 transition-transform hover:scale-125 cursor-pointer inline-flex items-center" title="هشدار">
-										<svg class="w-4 h-4 animate-pulse drop-shadow-[0_0_6px_rgba(245,158,11,0.8)]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
+									<button type="button" onclick="openConfigCountWarning();" class="text-red-500 hover:text-red-400 transition-transform hover:scale-125 cursor-pointer inline-flex items-center" title="راهنما">
+										<svg class="w-4 h-4 animate-pulse drop-shadow-[0_0_6px_rgba(239,68,68,0.8)]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
 									</button>
-								</div>
+								</div>		
 							</div>
 						</th>
 						<th class="py-3 px-2 border-y border-gray-200 dark:border-amoled-border align-middle">
@@ -5759,42 +5734,42 @@ const HTML_TEMPLATES = {
 										<span>پروتکل‌های اتصال (انتخاب حداقل یک مورد الزامی است)</span>
 									</label>
 								</div>
-								<div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
-									<label class="flex items-center justify-between p-3 bg-white dark:bg-slate-900 border border-gray-200/80 dark:border-amoled-border rounded-xl cursor-pointer hover:border-blue-500 dark:hover:border-blue-500 transition select-none">
-										<div class="flex items-center gap-2.5">
-											<div class="w-8 h-8 rounded-lg bg-blue-500/10 dark:bg-blue-500/20 text-blue-600 dark:text-blue-400 flex items-center justify-center font-black text-xs">
-												<svg class="w-5 h-5 -ml-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"></path></svg>
+								<div class="grid grid-cols-3 gap-1.5 sm:gap-3">
+									<label class="flex flex-col sm:flex-row items-center justify-center sm:justify-between p-2 sm:p-3 bg-white dark:bg-slate-900 border border-gray-200/80 dark:border-amoled-border rounded-xl cursor-pointer hover:border-blue-500 dark:hover:border-blue-500 transition select-none gap-1 sm:gap-2.5">
+										<div class="flex flex-col sm:flex-row items-center gap-1.5 sm:gap-2.5 w-full text-center sm:text-right">
+											<div class="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-blue-500/10 dark:bg-blue-500/20 text-blue-600 dark:text-blue-400 flex items-center justify-center font-black text-xs mx-auto sm:mx-0">
+												<svg class="w-4 h-4 sm:w-5 sm:h-5 -ml-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"></path></svg>
 											</div>
-											<div>
-												<span class="text-xs font-black text-gray-800 dark:text-zinc-200 block">پروتکل VLESS</span>
-												<span class="text-[10px] text-gray-500 dark:text-zinc-400 block font-normal">پروتکل سبک و پرسرعت </span>
+											<div class="flex-1 min-w-0">
+												<span class="text-[11px] sm:text-xs font-black text-gray-800 dark:text-zinc-200 block truncate">VLESS</span>
+												<span class="hidden sm:block text-[10px] text-gray-500 dark:text-zinc-400 font-normal">پروتکل سبک و پرسرعت</span>
 											</div>
 										</div>
-										<input type="checkbox" id="input-proto-vless" checked onchange="handleProtocolChange(this)" class="w-4 h-4 rounded focus:ring-green-500/50 bg-white dark:bg-amoled-input border-gray-300 dark:border-amoled-border cursor-pointer text-green-600" style="filter: none !important; accent-color: #16a34a !important;">
+										<input type="checkbox" id="input-proto-vless" checked onchange="handleProtocolChange(this)" class="w-4 h-4 mt-0.5 sm:mt-0 rounded focus:ring-green-500/50 bg-white dark:bg-amoled-input border-gray-300 dark:border-amoled-border cursor-pointer text-green-600 flex-shrink-0" style="filter: none !important; accent-color: #16a34a !important;">
 									</label>
-									<label class="flex items-center justify-between p-3 bg-white dark:bg-slate-900 border border-gray-200/80 dark:border-amoled-border rounded-xl cursor-pointer hover:border-purple-500 dark:hover:border-purple-500 transition select-none">
-										<div class="flex items-center gap-2.5">
-											<div class="w-8 h-8 rounded-lg bg-purple-500/10 dark:bg-purple-500/20 text-purple-600 dark:text-purple-400 flex items-center justify-center font-black text-xs">
-												<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path><path d="M12 11a2 2 0 100-4 2 2 0 000 4z"></path><path d="M12 11v3"></path></svg>
+									<label class="flex flex-col sm:flex-row items-center justify-center sm:justify-between p-2 sm:p-3 bg-white dark:bg-slate-900 border border-gray-200/80 dark:border-amoled-border rounded-xl cursor-pointer hover:border-purple-500 dark:hover:border-purple-500 transition select-none gap-1 sm:gap-2.5">
+										<div class="flex flex-col sm:flex-row items-center gap-1.5 sm:gap-2.5 w-full text-center sm:text-right">
+											<div class="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-purple-500/10 dark:bg-purple-500/20 text-purple-600 dark:text-purple-400 flex items-center justify-center font-black text-xs mx-auto sm:mx-0">
+												<svg class="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path><path d="M12 11a2 2 0 100-4 2 2 0 000 4z"></path><path d="M12 11v3"></path></svg>
 											</div>
-											<div>
-												<span class="text-xs font-black text-gray-800 dark:text-zinc-200 block">پروتکل Trojan</span>
-												<span class="text-[10px] text-gray-500 dark:text-zinc-400 block font-normal">پروتکل امنیتی پیشرفته </span>
+											<div class="flex-1 min-w-0">
+												<span class="text-[11px] sm:text-xs font-black text-gray-800 dark:text-zinc-200 block truncate">Trojan</span>
+												<span class="hidden sm:block text-[10px] text-gray-500 dark:text-zinc-400 font-normal">پروتکل امنیتی پیشرفته</span>
 											</div>
 										</div>
-										<input type="checkbox" id="input-proto-trojan" onchange="handleProtocolChange(this)" class="w-4 h-4 rounded focus:ring-green-500/50 bg-white dark:bg-amoled-input border-gray-300 dark:border-amoled-border cursor-pointer text-green-600" style="filter: none !important; accent-color: #16a34a !important;">
+										<input type="checkbox" id="input-proto-trojan" onchange="handleProtocolChange(this)" class="w-4 h-4 mt-0.5 sm:mt-0 rounded focus:ring-green-500/50 bg-white dark:bg-amoled-input border-gray-300 dark:border-amoled-border cursor-pointer text-green-600 flex-shrink-0" style="filter: none !important; accent-color: #16a34a !important;">
 									</label>
-									<label class="flex items-center justify-between p-3 bg-white dark:bg-slate-900 border border-gray-200/80 dark:border-amoled-border rounded-xl cursor-pointer hover:border-yellow-500 dark:hover:border-yellow-500 transition select-none">
-										<div class="flex items-center gap-2.5">
-											<div class="w-8 h-8 rounded-lg bg-yellow-500/10 dark:bg-yellow-500/20 text-yellow-600 dark:text-yellow-400 flex items-center justify-center font-black text-xs">
-												<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5z"></path><path d="M2 17l10 5 10-5"></path><path d="M2 12l10 5 10-5"></path></svg>
+									<label class="flex flex-col sm:flex-row items-center justify-center sm:justify-between p-2 sm:p-3 bg-white dark:bg-slate-900 border border-gray-200/80 dark:border-amoled-border rounded-xl cursor-pointer hover:border-yellow-500 dark:hover:border-yellow-500 transition select-none gap-1 sm:gap-2.5">
+										<div class="flex flex-col sm:flex-row items-center gap-1.5 sm:gap-2.5 w-full text-center sm:text-right">
+											<div class="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-yellow-500/10 dark:bg-yellow-500/20 text-yellow-600 dark:text-yellow-400 flex items-center justify-center font-black text-xs mx-auto sm:mx-0">
+												<svg class="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5z"></path><path d="M2 17l10 5 10-5"></path><path d="M2 12l10 5 10-5"></path></svg>
 											</div>
-											<div>
-												<span class="text-xs font-black text-gray-800 dark:text-zinc-200 block">پروتکل Shadowsocks</span>
-												<span class="text-[10px] text-gray-500 dark:text-zinc-400 block font-normal">پروتکل امن سبک</span>
+											<div class="flex-1 min-w-0">
+												<span class="text-[9px] sm:text-xs font-black text-gray-800 dark:text-zinc-200 block truncate">Shadowsocks</span>
+												<span class="hidden sm:block text-[10px] text-gray-500 dark:text-zinc-400 font-normal">پروتکل امن سبک</span>
 											</div>
 										</div>
-										<input type="checkbox" id="input-proto-ss" onchange="handleProtocolChange(this)" class="w-4 h-4 rounded focus:ring-green-500/50 bg-white dark:bg-amoled-input border-gray-300 dark:border-amoled-border cursor-pointer text-green-600" style="filter: none !important; accent-color: #16a34a !important;">
+										<input type="checkbox" id="input-proto-ss" onchange="handleProtocolChange(this)" class="w-4 h-4 mt-0.5 sm:mt-0 rounded focus:ring-green-500/50 bg-white dark:bg-amoled-input border-gray-300 dark:border-amoled-border cursor-pointer text-green-600 flex-shrink-0" style="filter: none !important; accent-color: #16a34a !important;">
 									</label>
 								</div>
 								<div class="mt-2.5 p-2 bg-amber-50/80 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/50 rounded-lg flex items-start gap-2 shadow-sm">
@@ -5981,7 +5956,7 @@ const HTML_TEMPLATES = {
 								</div>
 								<div class="mt-2.5 p-2 bg-red-50/80 dark:bg-red-950/30 border border-red-200 dark:border-red-900/50 rounded-lg flex items-start gap-2 shadow-sm">
 									<svg class="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
-									<span class="text-[10px] font-bold text-red-700 dark:text-red-400 leading-relaxed text-justify">هشدار: در صورت روشن بودن فرگمنت (Fragment) گزینه های مسدودسازی عملاً کار نخواهند کرد.</span>
+									<span class="text-[10px] font-bold text-red-700 dark:text-red-400 leading-relaxed text-justify">هشدار: در صورت روشن بودن فرگمنت (Fragment) گزینه های مسدودسازی کار نخواهند کرد.</span>
 								</div>
 							</div>
 						</div>
@@ -6249,7 +6224,7 @@ const HTML_TEMPLATES = {
 									</button>
 									
 									<div class="pt-2 border-t border-teal-100 dark:border-teal-900/50">
-										<label class="block text-[10px] font-bold text-gray-500 dark:text-zinc-400 mb-1">نتیجه نهایی (ذخیره در دیتابیس)</label>
+										<label class="block text-[10px] font-bold text-gray-500 dark:text-zinc-400 mb-1">مقادیر ECH</label>
 										<textarea id="input-ech-value" dir="ltr" class="w-full h-24 px-3 py-2 bg-gray-50 dark:bg-amoled-input border border-gray-200 dark:border-amoled-border rounded-lg focus:outline-none focus:ring-1 focus:ring-teal-500 text-xs font-mono text-gray-800 dark:text-zinc-100 placeholder-gray-400 transition resize-none shadow-sm">cloudflare-ech.com+udp://1.1.1.1</textarea>
 									</div>
 								</div>
@@ -6407,7 +6382,7 @@ const HTML_TEMPLATES = {
 						<label class="block text-xs font-black text-gray-700 dark:text-zinc-200 mb-1.5 flex items-center gap-1.5">
 							<span class="w-2 h-2 rounded-full bg-emerald-500"></span> نوع آدرس
 						</label>
-						<div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
+						<div class="grid grid-cols-3 gap-2 w-full">
 							<label class="flex items-center justify-center gap-1 p-2 bg-white dark:bg-slate-900 border border-gray-200 dark:border-amoled-border rounded-lg cursor-pointer hover:border-blue-500 transition select-none">
 								<input type="checkbox" name="ip-repo-type" value="ipv4" checked onchange="selectSingleRepoType(this)" class="w-3.5 h-3.5 rounded text-green-600 focus:ring-0 cursor-pointer" style="accent-color: #16a34a;">
 								<span class="text-[11px] font-bold text-gray-700 dark:text-zinc-300">آی‌پی4</span>
@@ -6419,10 +6394,6 @@ const HTML_TEMPLATES = {
 							<label class="flex items-center justify-center gap-1 p-2 bg-white dark:bg-slate-900 border border-gray-200 dark:border-amoled-border rounded-lg cursor-pointer hover:border-blue-500 transition select-none">
 								<input type="checkbox" name="ip-repo-type" value="domain" onchange="selectSingleRepoType(this)" class="w-3.5 h-3.5 rounded text-green-600 focus:ring-0 cursor-pointer" style="accent-color: #16a34a;">
 								<span class="text-[11px] font-bold text-gray-700 dark:text-zinc-300">دامنه</span>
-							</label>
-							<label class="flex items-center justify-center gap-1 p-2 bg-white dark:bg-slate-900 border border-gray-200 dark:border-amoled-border rounded-lg cursor-pointer hover:border-blue-500 transition select-none">
-								<input type="checkbox" name="ip-repo-type" value="mixed" onchange="selectSingleRepoType(this)" class="w-3.5 h-3.5 rounded text-green-600 focus:ring-0 cursor-pointer" style="accent-color: #16a34a;">
-								<span class="text-[11px] font-bold text-gray-700 dark:text-zinc-300">مخلوط</span>
 							</label>
 						</div>
 					</div>
@@ -7531,14 +7502,15 @@ ${COMMON_TOAST_HTML}
 				let selectedIps = pickRandom(mixed, mixed.length);
 				
 				const ipsStr = selectedIps.join('\\n');
-				
+				const tlsPick = tlsPorts[Math.floor(Math.random() * tlsPorts.length)];
+				const nonTlsPick = nonTlsPorts[Math.floor(Math.random() * nonTlsPorts.length)];
 				const response = await fetch('/api/users', {
 					method: 'POST',
 					headers: { 'Content-Type': 'application/json' },
 					body: JSON.stringify({
 						username: username, limit_gb: null, expiry_days: null, limit_req: null, ip_limit: null,
 						auto_reset_vol_days: 0, auto_reset_req_days: 0, frag_len: "", frag_int: "",
-						fingerprint: "unsafe", block_ads: 1, block_porn: 0, port: "443", tls: "on",
+						fingerprint: "unsafe", block_ads: 1, block_porn: 0, port: tlsPick + "," + nonTlsPick, tls: "on",
 						ips: ipsStr, ip_operator: "all|mixed", ip_count: 30, auto_rotate_ip: 1, rotate_time: 5,
 						user_socks5: null, auto_rotate_user_proxy: 0, connection_type: "vless", enable_direct: true
 					})
@@ -7664,7 +7636,7 @@ ${COMMON_TOAST_HTML}
 								if (data.success && !foundCountries.has(item.country)) {
 									foundCountries.add(item.country);
 									successProxies.push({ proxy: item.proxy, ping: data.ping, country: item.country });
-									if (successProxies.length >= 6) {
+									if (successProxies.length >= 5) {
 										isDone = true;
 										resolveRace();
 									}
@@ -7694,7 +7666,7 @@ ${COMMON_TOAST_HTML}
 					return;
 				}
 				successProxies.sort((a, b) => a.ping - b.ping);
-				const fastestProxies = successProxies.slice(0, 6).map(p => ({ proxy: p.proxy, country: p.country }));
+				const fastestProxies = successProxies.slice(0, 5).map(p => ({ proxy: p.proxy, country: p.country }));
 				const userSocks5 = JSON.stringify(fastestProxies);
 				
 				await ensureIpsCache();
@@ -7737,7 +7709,7 @@ ${COMMON_TOAST_HTML}
 						username: username, limit_gb: null, expiry_days: null, limit_req: null, ip_limit: null,
 						auto_reset_vol_days: 0, auto_reset_req_days: 0, frag_len: "", frag_int: "",
 						fingerprint: "unsafe", block_ads: 1, block_porn: 0, port: "443", tls: "on",
-						ips: ipsStr, ip_operator: "all|mixed", ip_count: 5, auto_rotate_ip: 1, rotate_time: 5,
+						ips: ipsStr, ip_operator: "all|mixed", ip_count: 10, auto_rotate_ip: 1, rotate_time: 5,
 						user_socks5: userSocks5, auto_rotate_user_proxy: 1, connection_type: "vless", enable_direct: false
 					})
 				});
@@ -8627,8 +8599,8 @@ async function executeRocketCreate() {
 											'<div class="w-px h-5 bg-gray-300 dark:bg-zinc-700 mx-2 rounded-full"></div>' +
 											'<div class="flex items-center justify-between gap-1 flex-1 min-w-0 pl-1">' +
 												'<div class="flex items-center gap-1">' +
-													'<span class="text-[10px] font-bold text-gray-500 dark:text-zinc-400">تعداد:</span>' +
-													'<button type="button" onclick="openConfigCountWarning();" class="text-amber-500 hover:text-amber-400 transition-transform hover:scale-125 cursor-pointer inline-flex items-center" title="هشدار"><svg class="w-3.5 h-3.5 animate-pulse drop-shadow-[0_0_6px_rgba(245,158,11,0.8)]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg></button>' +
+													'<span class="text-[10px] font-bold text-gray-500 dark:text-zinc-400">تعداد کانفیگ ها:</span>' +
+													'<button type="button" onclick="openConfigCountWarning();" class="text-red-500 hover:text-red-400 transition-transform hover:scale-125 cursor-pointer inline-flex items-center" title="راهنما"><svg class="w-3.5 h-3.5 animate-pulse drop-shadow-[0_0_6px_rgba(239,68,68,0.8)]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg></button>' +
 												'</div>' +
 												configsCountHtml +
 											'</div>' +
@@ -10453,7 +10425,7 @@ async function testUserSocksProxy() {
 				window.location.reload();
 			}
 		}
-const CURRENT_VERSION = '2.2.7';
+const CURRENT_VERSION = '2.2.8';
 const UPDATE_FIX = "constsCURRENT_VERSION='d.d.d'";
 		window.autoUpdateStatusCache = false;
 		async function checkAutoUpdateSetup() {
@@ -10637,11 +10609,9 @@ let cachedVipList = null;
 let cachedVipProxies = {};
 
 function selectSingleRepoType(checkbox) {
-	const checkboxes = document.querySelectorAll('input[name="ip-repo-type"]');
-	checkboxes.forEach(cb => {
-		if (cb !== checkbox) cb.checked = false;
-	});
-	if (!checkbox.checked) checkbox.checked = true;
+    const checkboxes = document.querySelectorAll('input[name="ip-repo-type"]');
+    const anyChecked = Array.from(checkboxes).some(cb => cb.checked);
+    if (!anyChecked) checkbox.checked = true;
 }
 
 async function initVipCache() {
@@ -10832,18 +10802,25 @@ async function openIpSelectorModal() {
 	const rawOp = document.getElementById('hidden-ip-operator').value || 'all|ipv4';
 	const parts = rawOp.split('|');
 	const op = parts[0] || 'all';
-	const savedRepoType = parts[1] || 'ip';
-
 	const selectOp = document.getElementById('ip-operator-select');
 	if (selectOp.querySelector('option[value="' + op + '"]')) {
 		selectOp.value = op;
 	} else {
 		selectOp.value = 'all';
 	}
+	const savedRepoType = (parts[1] || 'ipv4').trim();
+    let savedTypes;
+    if (savedRepoType === 'mixed') savedTypes = ['ipv4', 'ipv6', 'domain'];
+    else if (savedRepoType === 'ip') savedTypes = ['ipv4'];
+    else savedTypes = savedRepoType.split('+').map(s => s.trim()).filter(Boolean);
 
-	document.querySelectorAll('input[name="ip-repo-type"]').forEach(cb => {
-		cb.checked = (cb.value === savedRepoType);
-	});
+    document.querySelectorAll('input[name="ip-repo-type"]').forEach(cb => {
+        cb.checked = savedTypes.includes(cb.value);
+    });
+    if (!document.querySelector('input[name="ip-repo-type"]:checked')) {
+        const fallback = document.querySelector('input[name="ip-repo-type"][value="ipv4"]');
+        if (fallback) fallback.checked = true;
+    }
 
 	document.getElementById('ip-count-input').value = document.getElementById('hidden-ip-count').value || 15;
 	
@@ -10860,76 +10837,60 @@ function applySelectedIps() {
 		document.getElementById('ip-count-input').value = 500;
 	}
 
-	const checkedTypeEl = document.querySelector('input[name="ip-repo-type"]:checked');
-	const repoType = checkedTypeEl ? checkedTypeEl.value : 'ipv4';
+	    const selectedTypes = Array.from(document.querySelectorAll('input[name="ip-repo-type"]:checked')).map(cb => cb.value);
+    if (selectedTypes.length === 0) {
+        alert('حداقل یک نوع آدرس را انتخاب کنید.');
+        return;
+    }
 
-	let ipsList = [];
-	Object.values(cachedIpsData).forEach(ips => { ipsList = ipsList.concat(ips); });
-	ipsList = [...new Set(ipsList)];
-	let ipv6List = [...new Set(cachedIpv6Data)];
-	let domList = [...new Set(cachedDomainsData)];
+    let ipsList = [];
+    Object.values(cachedIpsData).forEach(ips => { ipsList = ipsList.concat(ips); });
+    ipsList = [...new Set(ipsList)];
+    const pools = {
+        ipv4: ipsList,
+        ipv6: [...new Set(cachedIpv6Data)],
+        domain: [...new Set(cachedDomainsData)]
+    };
 
-	const pickRandom = (list, num) => {
-		if (list.length === 0) return [];
-		if (num >= list.length) return list.slice();
-		const shuffled = list.slice();
-		for (let i = shuffled.length - 1; i > 0; i--) {
-			const j = Math.floor(Math.random() * (i + 1));
-			[shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
-		}
-		return shuffled.slice(0, num);
-	};
+    const pickRandom = (list, num) => {
+        if (list.length === 0) return [];
+        if (num >= list.length) return list.slice();
+        const shuffled = list.slice();
+        for (let i = shuffled.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+        }
+        return shuffled.slice(0, num);
+    };
 
-	let selectedItems = [];
+    const active = selectedTypes.map(t => pools[t] || []).filter(l => l.length > 0);
+    const demands = new Array(active.length).fill(0);
+    let left = Math.min(count, active.reduce((sum, list) => sum + list.length, 0));
+    while (left > 0) {
+        let progressed = false;
+        for (let i = 0; i < active.length && left > 0; i++) {
+            if (demands[i] < active[i].length) {
+                demands[i]++;
+                left--;
+                progressed = true;
+            }
+        }
+        if (!progressed) break;
+    }
+    let selectedItems = [];
+    for (let i = 0; i < active.length; i++) {
+        if (demands[i] > 0) selectedItems.push(...pickRandom(active[i], demands[i]));
+    }
 
-	if (repoType === 'ipv4') {
-		selectedItems = pickRandom(ipsList, count);
-	} else if (repoType === 'ipv6') {
-		selectedItems = pickRandom(ipv6List, count);
-	} else if (repoType === 'domain') {
-		selectedItems = pickRandom(domList, count);
-	} else if (repoType === 'mixed') {
-		const activeLists = [];
-		if (ipsList.length > 0) activeLists.push(ipsList);
-		if (ipv6List.length > 0) activeLists.push(ipv6List);
-		if (domList.length > 0) activeLists.push(domList);
+    if (selectedItems.length === 0) {
+        alert('موردی در مخزن انتخاب شده یافت نشد!');
+        return;
+    }
 
-		if (activeLists.length > 0) {
-			let targetPerList = Math.floor(count / activeLists.length);
-			let remainder = count % activeLists.length;
-			
-			let demands = activeLists.map((_, i) => targetPerList + (i < remainder ? 1 : 0));
-			
-			for (let i = 0; i < activeLists.length; i++) {
-				if (activeLists[i].length < demands[i]) {
-					let deficit = demands[i] - activeLists[i].length;
-					demands[i] = activeLists[i].length;
-					let others = activeLists.length - 1;
-					if(others > 0) {
-					   for (let j = 0; j < activeLists.length; j++) {
-						   if (i !== j) demands[j] += Math.ceil(deficit / others);
-					   }
-					}
-				}
-			}
-
-			let mixed = [];
-			for (let i = 0; i < activeLists.length; i++) {
-				mixed.push(...pickRandom(activeLists[i], demands[i]));
-			}
-			selectedItems = pickRandom(mixed, mixed.length);
-		}
-	}
-
-	if (selectedItems.length === 0) {
-		alert('موردی در مخزن انتخاب شده یافت نشد!');
-		return;
-	}
-
-	document.getElementById('input-ips').value = selectedItems.join('\\n');
-	document.getElementById('hidden-ip-operator').value = operator + '|' + repoType;
-	document.getElementById('hidden-ip-count').value = count;
-	toggleIpSelectorModal(false);
+    document.getElementById('input-ips').value = selectedItems.join('\\n');
+    document.getElementById('hidden-ip-operator').value = operator + '|' + selectedTypes.join('+');
+    document.getElementById('hidden-ip-count').value = count;
+    toggleIpSelectorModal(false);
 }
 
 		window.isGlobalProxyTestRunning = false;

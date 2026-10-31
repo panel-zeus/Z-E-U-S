@@ -1,2 +1,1 @@
-socks5://yszlxoph:wN68qqHdNbGd@23.95.186.213:2080
 socks5://113by3ev:hggxksa6plnq@us1.day1404.dpdns.org:11357

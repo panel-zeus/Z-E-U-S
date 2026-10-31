@@ -1,4 +1,4 @@
-VERSION=2.2.7
+VERSION=2.2.8
 <div class="text-center">
     
     <!-- هدر: آیکون و متن در یک ردیف -->
@@ -9,7 +9,7 @@ VERSION=2.2.7
                 <svg class="w-3.5 h-3.5 drop-shadow-sm" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
             </div>
         </div>
-        <h3 class="font-black text-sm text-gray-900 dark:text-white leading-none mt-0.5">نسخه 2.2.7 پنل منتشر شد</h3>
+        <h3 class="font-black text-sm text-gray-900 dark:text-white leading-none mt-0.5">نسخه 2.2.8 پنل منتشر شد</h3>
     </div>
     
     <div class="space-y-1.5 mb-2.5">
@@ -207,7 +207,7 @@ VERSION=2.2.7
         <div class="flex items-start gap-1 p-1.5 bg-orange-50 dark:bg-orange-950/30 border border-orange-200 dark:border-orange-800/60 rounded-lg shadow-sm mt-1.5">
             <svg class="w-3.5 h-3.5 flex-shrink-0 text-orange-600 dark:text-orange-500 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
             <div class="text-[8.5px] text-orange-800 dark:text-orange-400 font-bold text-justify leading-tight">
-                <span class="font-black text-orange-700 dark:text-orange-500">هشدار مهم:</span> برای اتصال بی‌نقص کانفیگ‌ها، پنل باید به نسخه <span class="bg-orange-100 dark:bg-orange-900/50 px-1 rounded font-black text-orange-700 dark:text-orange-300 mx-0.5" dir="ltr">2.2.7</span> یا جدیدتر آپدیت شده باشد.
+                <span class="font-black text-orange-700 dark:text-orange-500">هشدار مهم:</span> برای اتصال بی‌نقص کانفیگ‌ها، پنل باید به نسخه <span class="bg-orange-100 dark:bg-orange-900/50 px-1 rounded font-black text-orange-700 dark:text-orange-300 mx-0.5" dir="ltr">2.2.8</span> یا جدیدتر آپدیت شده باشد.
             </div>
         </div>
     </div>
