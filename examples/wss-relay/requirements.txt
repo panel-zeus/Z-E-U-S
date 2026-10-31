@@ -1,0 +1,2 @@
+# Version used for the offline regression suite; Python 3.11+ is required.
+aiohttp==3.14.1
