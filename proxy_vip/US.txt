@@ -1,1 +1,9 @@
+http://NYx:NYx@nyx.404i.me:42055
+socks5://yszlxoph:wN68qqHdNbGd@23.95.186.213:2080
 socks5://113by3ev:hggxksa6plnq@us1.day1404.dpdns.org:11357
+socks5://qsaf7xrh:jas09ei1stc7@zeus-2.khasteshodam.cyou:6061
+socks5://ppqv0zif:uxrx69jbs7rs@zeus-2.khasteshodam.cyou:6063
+socks5://8erv2onx:zv4r7sohq1zw@zeus-2.khasteshodam.cyou:6064
+socks5://tuvpjafd:udufn25z3vv4@zeus-2.khasteshodam.cyou:6066
+socks5://dhn41agw:8xl9n0ids6h2@zeus-2.khasteshodam.cyou:6067
+socks5://81sx4k0g:nkiwhvprdknp@zeus-2.khasteshodam.cyou:6069

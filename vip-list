@@ -6,10 +6,10 @@
     "name": "AL.txt"
   },
   {
-    "name": "DE.txt"
+    "name": "CA.txt"
   },
   {
-    "name": "CA.txt"
+    "name": "DE.txt"
   },
   {
     "name": "FI.txt"
@@ -21,16 +21,25 @@
     "name": "GB.txt"
   },
   {
+    "name": "GL.txt"
+  },
+  {
+    "name": "IE.txt"
+  },
+  {
     "name": "IT.txt"
+  },
+  {
+    "name": "KR.txt"
+  },
+  {
+    "name": "MX.txt"
   },
   {
     "name": "NL.txt"
   },
   {
     "name": "NO.txt"
-  },
-  {
-    "name": "RO.txt"
   },
   {
     "name": "SE.txt"
