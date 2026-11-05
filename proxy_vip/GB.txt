@@ -1,3 +1,2 @@
-socks5://dunvnvfn:8jxhaq16pvby@zeus-1.khasteshodam.cyou:6070
 socks5://wzlsqhao:4Aro3KLSuOBy@194.62.249.149:1080
-http://NYx:NYx@nyx.404i.me:18388
+socks5://dunvnvfn:8jxhaq16pvby@zeus-1.khasteshodam.cyou:6070

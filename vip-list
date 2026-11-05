@@ -9,7 +9,16 @@
     "name": "CA.txt"
   },
   {
+    "name": "CU.txt"
+  },
+  {
     "name": "DE.txt"
+  },
+  {
+    "name": "DK.txt"
+  },
+  {
+    "name": "ES.txt"
   },
   {
     "name": "FI.txt"
@@ -24,22 +33,25 @@
     "name": "GL.txt"
   },
   {
+    "name": "HT.txt"
+  },
+  {
     "name": "IE.txt"
   },
   {
     "name": "IT.txt"
   },
   {
-    "name": "KR.txt"
+    "name": "MC.txt"
   },
   {
     "name": "MX.txt"
   },
   {
-    "name": "NL.txt"
+    "name": "NO.txt"
   },
   {
-    "name": "NO.txt"
+    "name": "RO.txt"
   },
   {
     "name": "SE.txt"
@@ -51,6 +63,12 @@
     "name": "TR.txt"
   },
   {
+    "name": "UA.txt"
+  },
+  {
     "name": "US.txt"
+  },
+  {
+    "name": "VE.txt"
   }
 ]
