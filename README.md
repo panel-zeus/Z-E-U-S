@@ -57,6 +57,10 @@
 
 ## <a id="features"></a>⚡️ Features & Capabilities
 
+For the optional source features (XHTTP/gRPC, destination-based routing and an
+authenticated WSS relay), see the [configuration and validation guide](docs/optional-transports.md).
+HTTP transports and destination-based routing are disabled by default.
+
 **🚀 Core Protocols & Routing**
 * 📡 Dual Protocol Support: Native, highly optimized support for both VLESS and Trojan protocols over WebSocket, allowing simultaneous multi-protocol config generation.
 * 🌍 Multi-Location Routing (Up to 8 Proxies): Seamlessly assign up to 8 distinct proxies or geographic locations simultaneously to individual users.

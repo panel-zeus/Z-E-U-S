@@ -1,0 +1,10 @@
+# Replace the reserved domain with the relay hostname you control.
+relay.example.invalid {
+    @relay path /tcp-relay
+    handle @relay {
+        reverse_proxy 127.0.0.1:9080
+    }
+    handle {
+        respond 404
+    }
+}
