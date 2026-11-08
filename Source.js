@@ -974,7 +974,25 @@ const Router = {
 				}
 				const host = url.hostname;
 				let isAuthorized = false;
-				if (host.endsWith(".workers.dev")) {
+				if (host.endsWith(".pages.dev")) {
+					const projectName = host.split(".")[0];
+					const accountsRes = await fetch("https://api.cloudflare.com/client/v4/accounts", {
+						headers: { Authorization: "Bearer " + api_token },
+					});
+					const accountsData = await accountsRes.json().catch(() => ({}));
+					if (accountsData.success && accountsData.result) {
+						for (const acc of accountsData.result) {
+							const pagesRes = await fetch(`https://api.cloudflare.com/client/v4/accounts/${acc.id}/pages/projects/${projectName}`, {
+								headers: { Authorization: "Bearer " + api_token },
+							});
+							const pagesData = await pagesRes.json().catch(() => ({}));
+							if (pagesData.success && pagesData.result) {
+								isAuthorized = true;
+								break;
+							}
+						}
+					}
+				} else if (host.endsWith(".workers.dev")) {
 					const parts = host.split(".");
 					const targetSubdomain = parts[parts.length - 3];
 					const accountsRes = await fetch("https://api.cloudflare.com/client/v4/accounts", {
@@ -1123,11 +1141,42 @@ const Router = {
 				if (!githubRes.ok) throw new Error("خطا در دریافت سورس جدید از گیت‌هاب (وضعیت: " + githubRes.status + ")");
 				const rawNewCode = await githubRes.text();
 				const newCode = obfuscateSourceForUpdate(rawNewCode);
-				const scriptName = env.WORKER_NAME || url.hostname.split(".")[0];
+				const isPages = Boolean(env.IS_PAGES === "true" || env.CF_PAGES || (url.hostname && url.hostname.endsWith(".pages.dev")));
+				const scriptName = env.WORKER_NAME || (env.CF_PAGES_PROJECT_NAME || url.hostname.split(".")[0]);
+				const deployPagesUpdate = async () => {
+					const formData = new FormData();
+					formData.append("manifest", JSON.stringify({}));
+					formData.append("_worker.js", new Blob([newCode], { type: "application/javascript" }), "_worker.js");
+					formData.append("branch", "main");
+					const deployRes = await fetch(`https://api.cloudflare.com/client/v4/accounts/${currentAccountId}/pages/projects/${scriptName}/deployments`, {
+						method: "POST",
+						headers: { Authorization: "Bearer " + currentToken },
+						body: formData
+					});
+					if (!deployRes.ok) {
+						const errText = await deployRes.text().catch(() => "");
+						throw new Error("خطای کلودفلر هنگام دیپلوی پیجز (" + deployRes.status + "): " + errText.substring(0, 150));
+					}
+					const deployData = await deployRes.json().catch(() => ({}));
+					if (!deployData.success) {
+						const cfError = deployData.errors && deployData.errors.length > 0 ? deployData.errors[0].message : "خطا در اعمال آپدیت پیجز.";
+						throw new Error(cfError);
+					}
+					return new Response(JSON.stringify({ success: true }), { headers: { "Content-Type": "application/json" } });
+				};
+
+				if (isPages) {
+					return await deployPagesUpdate();
+				}
 				const bindingsRes = await fetch(`https://api.cloudflare.com/client/v4/accounts/${currentAccountId}/workers/scripts/${scriptName}/bindings`, {
 					headers: cfHeaders,
 				});
-				if (!bindingsRes.ok) throw new Error("عدم دسترسی به تنظیمات ورکر. کلودفلر خطا داد (وضعیت: " + bindingsRes.status + ")");
+				if (!bindingsRes.ok) {
+					try {
+						return await deployPagesUpdate();
+					} catch (e) {}
+					throw new Error("عدم دسترسی به تنظیمات ورکر. کلودفلر خطا داد (وضعیت: " + bindingsRes.status + ")");
+				}
 				const bindingsData = await bindingsRes.json().catch(() => ({}));
 				if (!bindingsData.success) throw new Error("توکن فاقد دسترسی ویرایش ورکر است.");
 				const newBindings = [];
@@ -1189,13 +1238,65 @@ const Router = {
 					currentAccountId = accData.result[0].id;
 				}
 				await env.DB.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('cf_token', ?)").bind(currentToken).run();
-				const scriptName = env.WORKER_NAME || url.hostname.split(".")[0];
+				const isPages = Boolean(env.IS_PAGES === "true" || env.CF_PAGES || (url.hostname && url.hostname.endsWith(".pages.dev")));
+				const scriptName = env.WORKER_NAME || (env.CF_PAGES_PROJECT_NAME || url.hostname.split(".")[0]);
+				const targetRegion = (body.region || "smart").trim().toLowerCase();
+
+				const handlePagesPlacement = async () => {
+					let placementConfig = { mode: "smart" };
+					if (targetRegion === "off") {
+						placementConfig = { mode: "off" };
+					} else if (targetRegion && targetRegion !== "smart") {
+						placementConfig = { region: targetRegion };
+					}
+					let currentConfigs = {};
+					try {
+						const getProjRes = await fetch(`https://api.cloudflare.com/client/v4/accounts/${currentAccountId}/pages/projects/${scriptName}`, { headers: cfHeaders });
+						const getProjData = await getProjRes.json().catch(() => ({}));
+						if (getProjData.success && getProjData.result && getProjData.result.deployment_configs) {
+							currentConfigs = getProjData.result.deployment_configs;
+						}
+					} catch (e) {}
+
+					const prodConfig = currentConfigs.production || {};
+					prodConfig.placement = placementConfig;
+					currentConfigs.production = prodConfig;
+
+					const patchRes = await fetch(`https://api.cloudflare.com/client/v4/accounts/${currentAccountId}/pages/projects/${scriptName}`, {
+						method: "PATCH",
+						headers: { ...cfHeaders, "Content-Type": "application/json" },
+						body: JSON.stringify({
+							deployment_configs: currentConfigs
+						})
+					});
+					if (!patchRes.ok) {
+						const errText = await patchRes.text().catch(() => "");
+						let cfErrorMsg = errText.substring(0, 150);
+						try {
+							const patchData = JSON.parse(errText);
+							if (patchData.errors && patchData.errors.length > 0) cfErrorMsg = patchData.errors[0].message;
+						} catch (e) {}
+						throw new Error("خطای کلودفلر در تنظیم ریجن پیجز: " + cfErrorMsg);
+					}
+					await env.DB.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('worker_placement', ?)").bind(targetRegion).run();
+					if (body.iso !== undefined) {
+						await env.DB.prepare("UPDATE users SET user_proxy_iata = ? WHERE enable_direct = 1").bind(body.iso || null).run();
+					}
+					return new Response(JSON.stringify({ success: true, placement: targetRegion }), { headers: { "Content-Type": "application/json" } });
+				};
+
+				if (isPages) {
+					return await handlePagesPlacement();
+				}
 				const contentRes = await fetch(`https://api.cloudflare.com/client/v4/accounts/${currentAccountId}/workers/scripts/${scriptName}`, { 
 					method: 'GET',
 					headers: cfHeaders
 				});
 				if (!contentRes.ok) {
 					const errText = await contentRes.text().catch(() => "");
+					if (contentRes.status === 404 || errText.includes("10007") || errText.toLowerCase().includes("does not exist")) {
+						return await handlePagesPlacement();
+					}
 					throw new Error("خطا در دریافت سورس فعلی ورکر: " + errText.substring(0, 150));
 				}
 				const bindingsRes = await fetch(`https://api.cloudflare.com/client/v4/accounts/${currentAccountId}/workers/scripts/${scriptName}/bindings`, { headers: cfHeaders });
@@ -1301,45 +1402,82 @@ const Router = {
 				if (bodyToken) {
 					await env.DB.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('cf_token', ?)").bind(currentToken).run();
 				}
-				const scriptName = env.WORKER_NAME || url.hostname.split(".")[0];
-				const serviceRes = await fetch(`https://api.cloudflare.com/client/v4/accounts/${currentAccountId}/workers/services/${scriptName}`, { 
-					method: 'GET',
-					headers: cfHeaders
-				});
+				const isPages = Boolean(env.IS_PAGES === "true" || env.CF_PAGES || (url.hostname && url.hostname.endsWith(".pages.dev")));
+				const scriptName = env.WORKER_NAME || (env.CF_PAGES_PROJECT_NAME || url.hostname.split(".")[0]);
 				let placement = "smart"; 
-				if (serviceRes.ok) {
-					const serviceData = await serviceRes.json().catch(() => ({}));
-					if (serviceData.success && serviceData.result && serviceData.result.default_environment && serviceData.result.default_environment.script) {
-						const p = serviceData.result.default_environment.script.placement;
-						if (p) {
-							const mode = (p.mode || "").toLowerCase();
-							if (mode === "smart" || mode === "off") {
-								placement = mode;
-							} else if (mode === "targeted") {
-								if (p.target && Array.isArray(p.target) && p.target.length > 0 && p.target[0].region) {
-									placement = p.target[0].region.toLowerCase();
-								} else {
-									placement = "targeted";
-								}
+				if (isPages) {
+					const pagesRes = await fetch(`https://api.cloudflare.com/client/v4/accounts/${currentAccountId}/pages/projects/${scriptName}`, { 
+						headers: cfHeaders 
+					});
+					if (pagesRes.ok) {
+						const pagesData = await pagesRes.json().catch(() => ({}));
+						if (pagesData.success && pagesData.result) {
+							const p = pagesData.result.deployment_configs?.production?.placement;
+							if (p) {
+								const mode = (p.mode || "").toLowerCase();
+								if (mode === "smart" || mode === "off") placement = mode;
+								else if (p.region) placement = p.region.toLowerCase();
+								else if (mode === "targeted") placement = "targeted";
 							}
 						}
 					}
 				} else {
-					// Fallback
-					const settingsRes = await fetch(`https://api.cloudflare.com/client/v4/accounts/${currentAccountId}/workers/scripts/${scriptName}/settings`, { 
+					const serviceRes = await fetch(`https://api.cloudflare.com/client/v4/accounts/${currentAccountId}/workers/services/${scriptName}`, { 
 						method: 'GET',
 						headers: cfHeaders
 					});
-					if (settingsRes.ok) {
-						const settingsData = await settingsRes.json().catch(() => ({}));
-						if (settingsData.success && settingsData.result && settingsData.result.placement) {
-							const p = settingsData.result.placement;
-							const mode = (p.mode || "").toLowerCase();
-							if (mode === "smart" || mode === "off") {
-								placement = mode;
-							} else if (mode === "targeted") {
-								placement = "targeted";
+					if (serviceRes.ok) {
+						const serviceData = await serviceRes.json().catch(() => ({}));
+						if (serviceData.success && serviceData.result && serviceData.result.default_environment && serviceData.result.default_environment.script) {
+							const p = serviceData.result.default_environment.script.placement;
+							if (p) {
+								const mode = (p.mode || "").toLowerCase();
+								if (mode === "smart" || mode === "off") {
+									placement = mode;
+								} else if (mode === "targeted") {
+									if (p.target && Array.isArray(p.target) && p.target.length > 0 && p.target[0].region) {
+										placement = p.target[0].region.toLowerCase();
+									} else {
+										placement = "targeted";
+									}
+								}
 							}
+						}
+					} else {
+						// Fallback
+						const settingsRes = await fetch(`https://api.cloudflare.com/client/v4/accounts/${currentAccountId}/workers/scripts/${scriptName}/settings`, { 
+							method: 'GET',
+							headers: cfHeaders
+						});
+						if (settingsRes.ok) {
+							const settingsData = await settingsRes.json().catch(() => ({}));
+							if (settingsData.success && settingsData.result && settingsData.result.placement) {
+								const p = settingsData.result.placement;
+								const mode = (p.mode || "").toLowerCase();
+								if (mode === "smart" || mode === "off") {
+									placement = mode;
+								} else if (mode === "targeted") {
+									placement = "targeted";
+								}
+							}
+						} else {
+							try {
+								const pagesRes = await fetch(`https://api.cloudflare.com/client/v4/accounts/${currentAccountId}/pages/projects/${scriptName}`, { 
+									headers: cfHeaders 
+								});
+								if (pagesRes.ok) {
+									const pagesData = await pagesRes.json().catch(() => ({}));
+									if (pagesData.success && pagesData.result) {
+										const p = pagesData.result.deployment_configs?.production?.placement;
+										if (p) {
+											const mode = (p.mode || "").toLowerCase();
+											if (mode === "smart" || mode === "off") placement = mode;
+											else if (p.region) placement = p.region.toLowerCase();
+											else if (mode === "targeted") placement = "targeted";
+										}
+									}
+								}
+							} catch (e) {}
 						}
 					}
 				}
