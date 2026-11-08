@@ -466,7 +466,7 @@ function obfuscateSourceForUpdate(sourceCode) {
 	const fixRegex = new RegExp("(?:const|let|var)\\s+UPDATE_" + "FIX\\s*=\\s*(['\"])([^'\"]+)\\1");
 	const verMatch = code.match(verRegex);
 	const fixMatch = code.match(fixRegex);
-	const versionStr = verMatch ? verMatch[2] : "2.3.0";
+	const versionStr = verMatch ? verMatch[2] : "2.3.1";
 	const updateFixStr = fixMatch ? fixMatch[2] : "constsCURRENT_VERSION='d.d.d'";
 	const xorKey1 = 198;
 	const xorKey2 = 124;
@@ -670,7 +670,7 @@ self.addEventListener("activate", (e) => {
 });
 self.addEventListener("fetch", (e) => {
 	const url = new URL(e.request.url);
-	if (url.pathname.startsWith("/api/") || url.pathname.startsWith("/sub/") || url.pathname.startsWith("/feed/") || url.pathname.startsWith("/status/") || url.pathname.startsWith("/stream/")) {
+	if (url.pathname.startsWith("/api/") || url.pathname.startsWith("/sub/") || url.pathname.startsWith("/feed/") || url.pathname.startsWith("/yaml/") || url.pathname.startsWith("/status/") || url.pathname.startsWith("/stream/")) {
 		return;
 	}
 	if (STATIC_ASSETS.includes(e.request.url)) {
@@ -1447,7 +1447,6 @@ const Router = {
 			}
 			try {
 				let ip = "";
-				let workingProxy = proxy;
 				if (proxy.includes("t.me/socks") || proxy.includes("tg://socks")) {
 					ip = proxy.match(/server=([^&]+)/)?.[1] || "";
 				} else {
@@ -2741,12 +2740,6 @@ async function handlevIees(env, storedData = null, ctx = null, request = null) {
 									needsDbUpdateForTimestamp = true;
 								}
 							}
-							const sortedIps = Object.keys(activeIps).sort((a, b) => {
-								const tA = typeof activeIps[a] === "object" ? activeIps[a].timestamp : activeIps[a];
-								const tB = typeof activeIps[b] === "object" ? activeIps[b].timestamp : activeIps[b];
-								return tB - tA;
-							});
-							/* Bypassed: if (user.ip_limit && user.ip_limit > 0 && sortedIps.indexOf(clientIP) >= user.ip_limit) isIpLimitExpired = true; */
 							if (hasChanges || needsDbUpdateForTimestamp || isIpLimitExpired) updatedActiveIps = JSON.stringify(activeIps);
 						}
 					}
@@ -3193,8 +3186,6 @@ async function handlevIees(env, storedData = null, ctx = null, request = null) {
 				}
 				let isNewIp = false;
 				if (!activeIps[clientIP]) {
-					const sortedIps = Object.keys(activeIps);
-					/* Bypassed: if (user.ip_limit && user.ip_limit > 0 && sortedIps.length >= user.ip_limit) { serverSock.close(); return; } */
 					activeIps[clientIP] = { timestamp: now, count: 1 };
 					isNewIp = true;
 				} else {
@@ -3250,7 +3241,6 @@ async function handlevIees(env, storedData = null, ctx = null, request = null) {
 								const extLen = (rawData[pos + 2] << 8) | rawData[pos + 3];
 								pos += 4;
 								if (extType === 0x0000) {
-									let sniListLen = (rawData[pos] << 8) | rawData[pos + 1];
 									let sniPos = pos + 2;
 									if (rawData[sniPos] === 0x00) {
 										let sniLen = (rawData[sniPos + 1] << 8) | rawData[sniPos + 2];
@@ -3550,23 +3540,13 @@ function convertToUint8Array(data) {
 	if (ArrayBuffer.isView(data)) return new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
 	return new Uint8Array(data || 0);
 }
-const dnsCache = new Map();
 async function resolveToIPv4(host) {
 	if (isIPv4(host)) return host;
-	if (dnsCache.has(host)) return dnsCache.get(host);
 	try {
-		const res = await fetch("https://cloudflare-dns.com/dns-query?name=" + encodeURIComponent(host) + "&type=A", {
-			headers: { "Accept": "application/dns-json" }
-		});
-		if (res.ok) {
-			const data = await res.json();
-			if (data.Answer) {
-				for (const ans of data.Answer) {
-					if (ans.type === 1 && isIPv4(ans.data)) {
-						dnsCache.set(host, ans.data);
-						return ans.data;
-					}
-				}
+		const answers = await dohQuery(host, "A");
+		for (const ans of answers) {
+			if (ans.type === 1 && isIPv4(ans.data)) {
+				return ans.data;
 			}
 		}
 	} catch (e) {}
@@ -4990,6 +4970,187 @@ const COMMON_TOAST_JS = `
 			}
 		};
 `;
+const COMMON_SHARED_FUNCS_JS = `
+		function getFlagEmoji(countryCode) {
+			if (!countryCode) return '<span class="zeus-flag-globe">🌐</span>';
+			const cc = String(countryCode).toLowerCase().replace(/[^a-z]/g, '');
+			if (cc.length !== 2) return '<span class="zeus-flag-globe">🌐</span>';
+			return '<span class="fi fi-' + cc + ' zeus-flag" title="' + cc.toUpperCase() + '"></span>';
+		}
+		function getFlagEmojiText(countryCode) {
+			if (!countryCode) return '🌐';
+			const cc = String(countryCode).toUpperCase().replace(/[^A-Z]/g, '');
+			if (cc.length !== 2) return '🌐';
+			try {
+				return String.fromCodePoint(...cc.split('').map(char => 127397 + char.charCodeAt(0)));
+			} catch (e) {
+				return '🌐';
+			}
+		}
+		function downloadQrCode() {
+			const container = document.getElementById('qrcode-container');
+			if (!container) return;
+			const canvas = container.querySelector('canvas');
+			const img = container.querySelector('img');
+			let dataUrl = '';
+			if (canvas) {
+				dataUrl = canvas.toDataURL("image/png");
+			} else if (img && img.src) {
+				dataUrl = img.src;
+			}
+			if (!dataUrl) {
+				alert('⚠️ تصویر QR برای دانلود یافت نشد!');
+				return;
+			}
+			const downloadAnchor = document.createElement('a');
+			downloadAnchor.href = dataUrl;
+			downloadAnchor.download = "zeus_qrcode_" + Date.now() + ".png";
+			document.body.appendChild(downloadAnchor);
+			downloadAnchor.click();
+			downloadAnchor.remove();
+		}
+		function getvIeesLink(target) {
+			const user = target 
+				? (typeof target === 'object' ? target : (window.allUsers ? window.allUsers.find(u => u.username === target) : null)) 
+				: (window.statusUser || null);
+			if (!user) return '';
+			const host = window.location.hostname || window.location.host;
+			var ips = [host];
+			if (user.ips) {
+				const parsedIps = user.ips.split('\\n').map(function(ip) { return ip.trim(); }).filter(function(ip) { return ip.length > 0; });
+				if (parsedIps.length > 0) ips = parsedIps;
+			}
+			var ports = String(user.port || '443').split(',').map(function(p) { return p.trim(); }).filter(function(p) { return p.length > 0; });
+			var fp = user.fingerprint || 'chrome';
+			const dynPath = encodeURIComponent("/stream/PANEL_ZEUS/" + (user.uuid ? user.uuid.split("-")[4] : "default"));
+			const links = [];
+		const m1 = decodeURIComponent('%E2%9A%A0%EF%B8%8F%20%D9%BE%D9%86%D9%84%20%D8%B1%D8%A7%DB%8C%DA%AF%D8%A7%D9%86%20%D9%88%20%D8%BA%DB%8C%D8%B1%20%D9%82%D8%A7%D8%A8%D9%84%20%D9%81%D8%B1%D9%88%D8%B4%20%E2%9A%A0%EF%B8%8F');
+		const m2 = decodeURIComponent('%F0%9F%9A%80%D8%B3%D8%A7%D8%AE%D8%AA%20%D8%B1%D8%A7%DB%8C%DA%AF%D8%A7%D9%86%20%40ZEUS_PANEL_BOT%20%F0%9F%9A%80');
+			let remVol = "∞";
+			if (user.limit_gb) {
+				let rem = user.limit_gb - (user.used_gb || 0);
+				remVol = rem > 0 ? rem.toFixed(2) + "GB" : "0GB";
+			}
+			let remTime = "∞";
+			if (user.expiry_days) {
+				if (user.start_on_first_connect === 1) {
+					if (user.first_connection_time) {
+						const expiryDate = new Date(user.first_connection_time + user.expiry_days * 86400000);
+						const diffDays = Math.ceil((expiryDate.getTime() - Date.now()) / 86400000);
+						remTime = diffDays > 0 ? diffDays + "Days" : "0Days";
+					} else {
+						remTime = user.expiry_days + "Days (Not Started)";
+					}
+				} else if (user.created_at) {
+					const created = new Date(user.created_at);
+					const expiryDate = new Date(created.getTime() + user.expiry_days * 86400000);
+					const diffDays = Math.ceil((expiryDate.getTime() - Date.now()) / 86400000);
+					remTime = diffDays > 0 ? diffDays + "Days" : "0Days";
+				}
+			}
+			let remReq = "∞";
+			if (user.limit_req) {
+				let remR = user.limit_req - (user.used_req || 0);
+				remReq = remR > 0 ? remR.toLocaleString() + "Req" : "0Req";
+			}
+			const infoRemark = "📊 remaining | \u200E" + remVol + " | \u200E" + remTime + " | \u200E" + remReq;
+links.push('vle' + 'ss://' + (user.uuid || '') + '@0.0.0.0:1?encryption=none&security=none&type=ws&host=' + host + '&path=' + dynPath + '#' + encodeURIComponent(infoRemark));
+			const rawPath = "/stream/PANEL_ZEUS/" + (user.uuid ? user.uuid.split("-")[4] : "default");
+			let proxyList = [];
+			try {
+				if (user.user_socks5 && user.user_socks5.trim().startsWith("[")) {
+					proxyList = JSON.parse(user.user_socks5);
+				} else if (user.user_socks5 || user.user_proxy_ip) {
+					proxyList = [user.user_socks5 || user.user_proxy_ip];
+				} else {
+					proxyList = [null];
+				}
+			} catch (e) {
+				proxyList = [user.user_socks5 || user.user_proxy_ip];
+			}
+			if (!Array.isArray(proxyList) || proxyList.length === 0) proxyList = [];
+			const allowDirect = user.enable_direct !== 0;
+			if (allowDirect) {
+				let hasDirect = proxyList.some(function(p) { return p === null || p === ""; });
+				if (!hasDirect) proxyList.push(null);
+			} else {
+				proxyList = proxyList.filter(function(p) { return p !== null && p !== ""; });
+			}
+			if (proxyList.length === 0) proxyList = [null];
+			let proxyFlagCache = {};
+			try { proxyFlagCache = JSON.parse(localStorage.getItem('proxy_flag_cache_v2') || '{}'); } catch(e) {}
+			let resolvedProxies = [];
+			for (let locIdx = 0; locIdx < proxyList.length; locIdx++) {
+				let proxyItem = proxyList[locIdx];
+				let proxyStr = typeof proxyItem === "object" && proxyItem !== null ? proxyItem.proxy : proxyItem;
+				let countryCode = typeof proxyItem === "object" && proxyItem !== null ? proxyItem.country : (!proxyStr ? (user.user_proxy_iata || "") : "");
+				let flagEmoji = "🌐";
+				if (countryCode && typeof getFlagEmojiText === 'function') {
+					flagEmoji = getFlagEmojiText(countryCode);
+				} else if (proxyStr && proxyFlagCache[proxyStr] && typeof getFlagEmojiText === 'function') {
+					flagEmoji = getFlagEmojiText(proxyFlagCache[proxyStr]);
+				}
+				const currentDynPath = encodeURIComponent(rawPath + ((proxyItem !== null && proxyItem !== "") ? "/loc-" + locIdx : ""));
+				resolvedProxies.push({ flagEmoji, currentDynPath });
+			}
+			const userConnType = String(user.connection_type || 'vless').toLowerCase();
+			const enableVless = userConnType.includes('vless') || userConnType === 'vl' + 'e' + 'ss' || (!userConnType.includes('trojan') && !userConnType.includes('shadowsocks'));
+			const enableTrojan = userConnType.includes('trojan');
+			const enableSS = userConnType.includes('shadowsocks');
+			ips.forEach((rawIp) => {
+				let ip = String(rawIp).trim();
+				const bMatch = ip.match(/^\[(.*?)\]/);
+				if (bMatch) ip = bMatch[1];
+				else if (ip.split(":").length === 2) ip = ip.split(":")[0];
+				let safeIp = ip.includes(":") && !ip.startsWith("[") ? '[' + ip + ']' : ip;
+				ports.forEach((portStr) => {
+					resolvedProxies.forEach((proxy) => {
+						const isTlsPort = ["443", "2053", "2083", "2087", "2096", "8443"].includes(portStr);
+						const tlsVal = isTlsPort ? "tls" : "none";
+						let echList = user.ech ? user.ech.split(',').map(function(e){return e.trim();}).filter(function(e){return e;}) : [""];
+						if (echList.length === 0) echList = [""];
+						let protoCounts = { UDP: 0, TCP: 0, DOH: 0, UNK: 0 };
+						echList.forEach((echItem) => {
+							let userFrag = "";
+							if (user.frag_len && user.frag_int) userFrag += "&fragment=" + encodeURIComponent(user.frag_len + "," + user.frag_int + (isTlsPort ? ",tlshello" : ""));
+							if (user.advanced_frag) userFrag += "&fm=" + encodeURIComponent(user.advanced_frag);
+							if (isTlsPort && user.cipher_suites) userFrag += "&cs=" + encodeURIComponent(user.cipher_suites);
+							if (user.tls_mask) userFrag += "&mask=" + encodeURIComponent(user.tls_mask);
+							if (isTlsPort && echItem) userFrag += "&ech=" + encodeURIComponent(echItem);
+							const tlsParams = isTlsPort ? ("&insecure=0&fp=" + fp + "&allowInsecure=0&sni=" + host) : "";
+							let echSuffix = "";
+							if (echList.length > 1 && echItem) {
+								let pType = "UNK";
+								if (echItem.includes("+udp://")) pType = "UDP";
+								else if (echItem.includes("+tcp://")) pType = "TCP";
+								else if (echItem.includes("+https://") || echItem.includes("dns-query")) pType = "DOH";
+								protoCounts[pType]++;
+								echSuffix = " | ECH-" + pType + "-" + protoCounts[pType];
+							}
+							if (enableVless) {
+								const remark = "ZEUS | " + proxy.flagEmoji + " | " + user.username + echSuffix;
+								links.push('vle' + 'ss://' + (user.uuid || '') + '@' + safeIp + ':' + portStr + '?path=' + proxy.currentDynPath + '&security=' + tlsVal + '&encryption=none&host=' + host + '&type=ws' + tlsParams + userFrag + '#' + encodeURIComponent(remark));
+							}
+							if (enableTrojan) {
+								const trojanRemark = "ZEUS | " + proxy.flagEmoji + " | " + user.username + echSuffix;
+								links.push('trojan://' + (user.uuid || '') + '@' + safeIp + ':' + portStr + '?path=' + proxy.currentDynPath + '&security=' + tlsVal + '&host=' + host + '&type=ws' + tlsParams + userFrag + '#' + encodeURIComponent(trojanRemark));
+							}
+							if (enableSS) {
+								const ssRemark = "ZEUS | " + proxy.flagEmoji + " | " + user.username + echSuffix;
+								const methodPass = btoa("aes-256-gcm:" + (user.uuid || ''));
+								let pluginOpts = "v2ray-plugin;mode=websocket;host=" + host + ";path=" + decodeURIComponent(proxy.currentDynPath) + (isTlsPort ? ";tls" : "");
+								let pluginStr = encodeURIComponent(pluginOpts);
+								links.push("ss://" + methodPass + "@" + safeIp + ":" + portStr + "/?plugin=" + pluginStr + "#" + encodeURIComponent(ssRemark));
+							}
+						});
+					});
+				});
+			});
+			links.push('vle' + 'ss://' + (user.uuid || '') + '@0.0.0.0:1?encryption=none&security=none&type=ws&host=' + host + '&path=' + dynPath + '#' + encodeURIComponent(m1));
+			links.push('vle' + 'ss://' + (user.uuid || '') + '@0.0.0.0:1?encryption=none&security=none&type=ws&host=' + host + '&path=' + dynPath + '#' + encodeURIComponent(m2));
+			return links.join('\\n');
+		}
+`;
 const HTML_TEMPLATES = {
 	nginx: `<!DOCTYPE html>
 <html lang="fa" dir="rtl" class="dark">
@@ -5104,7 +5265,8 @@ const HTML_TEMPLATES = {
 	</div>
 	${COMMON_TOAST_HTML}
 	<script>
-		${COMMON_TOAST_JS};
+		${COMMON_TOAST_JS}
+		${COMMON_SHARED_FUNCS_JS};
 		async function handleSetup(event) {
 			event.preventDefault();
 			const password = document.getElementById('password').value.trim();
@@ -5218,6 +5380,7 @@ const HTML_TEMPLATES = {
 	${COMMON_TOAST_HTML}
 	<script>
 		${COMMON_TOAST_JS}
+		${COMMON_SHARED_FUNCS_JS}
 		async function handleLogin(event) {
 			event.preventDefault();
 			const password = document.getElementById('password').value.trim();
@@ -5646,8 +5809,15 @@ const HTML_TEMPLATES = {
 							<path d="M2 12h20"></path>
 						</svg>
 					</button>
-					<button onclick="openPlacementModal()" title="تغییر لوکیشن کانفیگ ها" class="absolute -bottom-1.5 -right-1.5 z-20 w-[24px] h-[24px] bg-red-500 hover:bg-red-600 border-2 border-gray-100 dark:border-[#050913] rounded-full flex items-center justify-center text-white shadow-md transition-transform hover:scale-125 cursor-pointer">
-						<svg class="w-[14px] h-[14px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+					<button onclick="openPlacementModal()" title="تغییر لوکیشن کانفیگ ها" dir="ltr" class="absolute -bottom-2.5 left-1/2 z-20 h-[29px] w-[58px] p-0 rounded-full border-2 border-gray-200 dark:border-amoled-border flex items-stretch overflow-hidden shadow-lg transition-transform hover:scale-110 active:scale-95 cursor-pointer group/cap">
+						<div class="w-1/2 h-full bg-red-500 group-hover/cap:bg-red-600 flex items-center justify-center text-white transition-colors">
+							<svg class="w-[19px] h-[19px] flex-shrink-0 transition-transform duration-300 group-hover/cap:rotate-90" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+						</div>
+						<div class="w-1/2 h-full bg-white dark:bg-amoled-card flex items-center justify-center border-l border-gray-200 dark:border-amoled-border transition-colors">
+							<span id="placement-flag-emoji" class="w-full h-full flex items-center justify-center select-none -translate-x-0.5">
+								<svg class="w-4 h-4 text-sky-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+							</span>
+						</div>
 					</button>
 				</div>
 				<button onclick="openRocketModal(this)" title="افزودن کاربر تک لوکیشن" class="p-2 rounded-full bg-orange-50 dark:bg-orange-950/40 border-2 border-orange-500 dark:border-orange-500 hover:bg-orange-100 dark:hover:bg-orange-900/60 transition-all duration-300 text-orange-600 dark:text-orange-400 shadow-[0_0_15px_rgba(249,115,22,0.6)] hover:shadow-[0_0_25px_rgba(249,115,22,0.95)] hover:scale-125 active:scale-110 cursor-pointer inline-flex items-center justify-center relative group">
@@ -7250,23 +7420,18 @@ ${COMMON_TOAST_HTML}
 				if (disable !== null) btnDesk.disabled = disable;
 			}
 		}
-		function showToast(message, type = 'success') {
-			const container = document.getElementById('toast-container');
-			const toast = document.createElement('div');
-			const colors = type === 'error' 
-				? 'bg-red-50 dark:bg-red-900/40 border-red-200 dark:border-red-800 text-red-600 dark:text-red-400' 
-				: 'bg-green-50 dark:bg-green-900/40 border-green-200 dark:border-green-800 text-green-700 dark:text-green-500';
-			toast.className = 'px-4 py-3 border rounded-md shadow-lg font-bold text-sm transform transition-all duration-300 -translate-y-full opacity-0 ' + colors;
-			toast.innerText = message;
-			container.appendChild(toast);
-			requestAnimationFrame(() => {
-				toast.classList.remove('-translate-y-full', 'opacity-0');
-			});
-			setTimeout(() => {
-				toast.classList.add('-translate-y-full', 'opacity-0');
-				setTimeout(() => toast.remove(), 300);
-			}, 3000);
-		}
+		const pickRandom = (list, num) => {
+			if (list.length === 0) return [];
+			if (num >= list.length) return list.slice();
+			const shuffled = list.slice();
+			for (let i = shuffled.length - 1; i > 0; i--) {
+				const j = Math.floor(Math.random() * (i + 1));
+				[shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+			}
+			return shuffled.slice(0, num);
+		};
+		${COMMON_TOAST_JS}
+		${COMMON_SHARED_FUNCS_JS}
 		function customConfirm(message) {
 			return new Promise((resolve) => {
 				const modal = document.getElementById('custom-confirm-modal');
@@ -7293,14 +7458,6 @@ ${COMMON_TOAST_HTML}
 				btnCancel.addEventListener('click', onCancel);
 			});
 		}
-		window.alert = function(message) {
-			const msgStr = message ? message.toString() : '';
-			if (msgStr.includes('خطا') || msgStr.includes('⚠️') || msgStr.includes('❌')) {
-				showToast(msgStr, 'error');
-			} else {
-				showToast(msgStr, 'success');
-			}
-		};
 		window.selectedUsernames = new Set();
 		function toggleSelectAllUsers(el) {
 			const checkboxes = document.querySelectorAll('input[name="select-user"]');
@@ -7617,13 +7774,6 @@ ${COMMON_TOAST_HTML}
 				}
 			}
 		};
-		window.toggleAutoRotateIpInputs = function(show) {
-			const container = document.getElementById('auto-rotate-ip-inputs-container');
-			if (container) {
-				if (show) container.classList.remove('hidden');
-				else container.classList.add('hidden');
-			}
-		};
 		window.applyFragPreset = function(op, btnEl) {
 			const presets = {
 				'mci': { len: '10-30', int: '2-5', name: 'همراه اول' },
@@ -7836,16 +7986,6 @@ ${COMMON_TOAST_HTML}
 				Object.values(cachedIpsData).forEach(ips => { ipsList = ipsList.concat(ips); });
 				ipsList = [...new Set(ipsList)];
 				let domList = [...new Set(cachedDomainsData)];
-				const pickRandom = (list, num) => {
-					if (list.length === 0) return [];
-					if (num >= list.length) return list.slice();
-					const shuffled = list.slice();
-					for (let i = shuffled.length - 1; i > 0; i--) {
-						const j = Math.floor(Math.random() * (i + 1));
-						[shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
-					}
-					return shuffled.slice(0, num);
-				};
 				let count = 30;
 				let half = Math.ceil(count / 2);
 				let otherHalf = count - half;
@@ -8021,16 +8161,6 @@ ${COMMON_TOAST_HTML}
 				Object.values(cachedIpsData).forEach(ips => { ipsList = ipsList.concat(ips); });
 				ipsList = [...new Set(ipsList)];
 				let domList = [...new Set(cachedDomainsData)];
-				const pickRandom = (list, num) => {
-					if (list.length === 0) return [];
-					if (num >= list.length) return list.slice();
-					const shuffled = list.slice();
-					for (let i = shuffled.length - 1; i > 0; i--) {
-						const j = Math.floor(Math.random() * (i + 1));
-						[shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
-					}
-					return shuffled.slice(0, num);
-				};
 				let count = 5;
 				let half = Math.ceil(count / 2);
 				let otherHalf = count - half;
@@ -8084,6 +8214,41 @@ const PLACEMENT_DATA = {
 			"GCP": { "regions": [ {"id": "africa-south1", "name": "Johannesburg", "country": "South Africa", "emoji": "🇿🇦", "location": "Johannesburg"}, {"id": "asia-east1", "name": "Taiwan", "country": "Taiwan", "emoji": "🇹🇼", "location": "Changhua County"}, {"id": "asia-east2", "name": "Hong Kong", "country": "Hong Kong", "emoji": "🇭🇰", "location": "Hong Kong"}, {"id": "asia-northeast1", "name": "Tokyo", "country": "Japan", "emoji": "🇯🇵", "location": "Tokyo"}, {"id": "asia-northeast2", "name": "Osaka", "country": "Japan", "emoji": "🇯🇵", "location": "Osaka"}, {"id": "asia-northeast3", "name": "Seoul", "country": "South Korea", "emoji": "🇰🇷", "location": "Seoul"}, {"id": "asia-south1", "name": "Mumbai", "country": "India", "emoji": "🇮🇳", "location": "Mumbai"}, {"id": "asia-south2", "name": "Delhi", "country": "India", "emoji": "🇮🇳", "location": "Delhi"}, {"id": "asia-southeast1", "name": "Singapore", "country": "Singapore", "emoji": "🇸🇬", "location": "Singapore"}, {"id": "asia-southeast2", "name": "Jakarta", "country": "Indonesia", "emoji": "🇮🇩", "location": "Jakarta"}, {"id": "asia-southeast3", "name": "Bangkok", "country": "Thailand", "emoji": "🇹🇭", "location": "Bangkok"}, {"id": "australia-southeast1", "name": "Sydney", "country": "Australia", "emoji": "🇦🇺", "location": "Sydney"}, {"id": "australia-southeast2", "name": "Melbourne", "country": "Australia", "emoji": "🇦🇺", "location": "Melbourne"}, {"id": "europe-central2", "name": "Warsaw", "country": "Poland", "emoji": "🇵🇱", "location": "Warsaw"}, {"id": "europe-north1", "name": "Finland", "country": "Finland", "emoji": "🇫🇮", "location": "Hamina"}, {"id": "europe-north2", "name": "Stockholm", "country": "Sweden", "emoji": "🇸🇪", "location": "Stockholm"}, {"id": "europe-southwest1", "name": "Madrid", "country": "Spain", "emoji": "🇪🇸", "location": "Madrid"}, {"id": "europe-west1", "name": "Belgium", "country": "Belgium", "emoji": "🇧🇪", "location": "St. Ghislain"}, {"id": "europe-west2", "name": "London", "country": "United Kingdom", "emoji": "🇬🇧", "location": "London"}, {"id": "europe-west3", "name": "Frankfurt", "country": "Germany", "emoji": "🇩🇪", "location": "Frankfurt"}, {"id": "europe-west4", "name": "Netherlands", "country": "Netherlands", "emoji": "🇳🇱", "location": "Eemshaven"}, {"id": "europe-west6", "name": "Zurich", "country": "Switzerland", "emoji": "🇨🇭", "location": "Zurich"}, {"id": "europe-west8", "name": "Milan", "country": "Italy", "emoji": "🇮🇹", "location": "Milan"}, {"id": "europe-west9", "name": "Paris", "country": "France", "emoji": "🇫🇷", "location": "Paris"}, {"id": "europe-west10", "name": "Berlin", "country": "Germany", "emoji": "🇩🇪", "location": "Berlin"}, {"id": "europe-west12", "name": "Turin", "country": "Italy", "emoji": "🇮🇹", "location": "Turin"}, {"id": "me-central1", "name": "Doha", "country": "Qatar", "emoji": "🇶🇦", "location": "Doha"}, {"id": "me-central2", "name": "Dammam", "country": "Saudi Arabia", "emoji": "🇸🇦", "location": "Dammam"}, {"id": "me-west1", "name": "Tel Aviv", "country": "Israel", "emoji": "🇮🇱", "location": "Tel Aviv"}, {"id": "northamerica-northeast1", "name": "Montreal", "country": "Canada", "emoji": "🇨🇦", "location": "Montreal"}, {"id": "northamerica-northeast2", "name": "Toronto", "country": "Canada", "emoji": "🇨🇦", "location": "Toronto"}, {"id": "northamerica-south1", "name": "Mexico", "country": "Mexico", "emoji": "🇲🇽", "location": "Queretaro"}, {"id": "southamerica-east1", "name": "Sao Paulo", "country": "Brazil", "emoji": "🇧🇷", "location": "Sao Paulo"}, {"id": "southamerica-west1", "name": "Santiago", "country": "Chile", "emoji": "🇨🇱", "location": "Santiago"}, {"id": "us-central1", "name": "Iowa", "country": "United States", "emoji": "🇺🇸", "location": "Council Bluffs, Iowa"}, {"id": "us-east1", "name": "South Carolina", "country": "United States", "emoji": "🇺🇸", "location": "Moncks Corner, South Carolina"}, {"id": "us-east4", "name": "Northern Virginia", "country": "United States", "emoji": "🇺🇸", "location": "Ashburn, Virginia"}, {"id": "us-east5", "name": "Columbus", "country": "United States", "emoji": "🇺🇸", "location": "Columbus, Ohio"}, {"id": "us-south1", "name": "Dallas", "country": "United States", "emoji": "🇺🇸", "location": "Dallas, Texas"}, {"id": "us-west1", "name": "Oregon", "country": "United States", "emoji": "🇺🇸", "location": "The Dalles, Oregon"}, {"id": "us-west2", "name": "Los Angeles", "country": "United States", "emoji": "🇺🇸", "location": "Los Angeles, California"}, {"id": "us-west3", "name": "Salt Lake City", "country": "United States", "emoji": "🇺🇸", "location": "Salt Lake City, Utah"}, {"id": "us-west4", "name": "Las Vegas", "country": "United States", "emoji": "🇺🇸", "location": "Las Vegas, Nevada"} ] }
 		  }
 		};
+		function getPlacementEmoji(placementVal) {
+			const globeSvg = '<svg class="w-4 h-4 text-sky-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>';
+			const smartSvg = '<svg class="w-4 h-4 text-purple-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>';
+			if (!placementVal || placementVal === 'none' || placementVal === 'off') return globeSvg;
+			if (placementVal === 'smart') return smartSvg;
+			let cleanVal = String(placementVal).toLowerCase().trim();
+			if (cleanVal.includes(':')) cleanVal = cleanVal.split(':')[1];
+			const countryToIso = { "United States": "us", "South Africa": "za", "Hong Kong": "hk", "Taiwan": "tw", "India": "in", "Singapore": "sg", "Australia": "au", "Indonesia": "id", "Malaysia": "my", "New Zealand": "nz", "Thailand": "th", "Japan": "jp", "South Korea": "kr", "Canada": "ca", "Germany": "de", "Switzerland": "ch", "Ireland": "ie", "United Kingdom": "gb", "France": "fr", "Sweden": "se", "Italy": "it", "Spain": "es", "Israel": "il", "United Arab Emirates": "ae", "Bahrain": "bh", "Mexico": "mx", "Brazil": "br", "Austria": "at", "Belgium": "be", "Chile": "cl", "Denmark": "dk", "Poland": "pl", "Qatar": "qa", "Norway": "no", "Netherlands": "nl", "Finland": "fi", "Saudi Arabia": "sa" };
+			for (const prov in PLACEMENT_DATA.providers) {
+				const found = PLACEMENT_DATA.providers[prov].regions.find(r => r.id.toLowerCase() === cleanVal);
+				if (found && found.country) {
+					const iso = countryToIso[found.country];
+					if (iso) return '<span class="fi fi-' + iso + ' text-sm rounded-sm shadow-sm leading-none"></span>';
+				}
+			}
+			return globeSvg;
+		}
+		async function updatePlacementCapsuleUI() {
+			try {
+				const cached = localStorage.getItem('zeus_cached_placement');
+				if (cached) {
+					const el = document.getElementById('placement-flag-emoji');
+					if (el) el.innerHTML = getPlacementEmoji(cached);
+				}
+				const res = await fetch('/api/placement-status');
+				if (res.ok) {
+					const data = await res.json();
+					if (data && data.placement) {
+						localStorage.setItem('zeus_cached_placement', data.placement);
+						const el = document.getElementById('placement-flag-emoji');
+						if (el) el.innerHTML = getPlacementEmoji(data.placement);
+					}
+				}
+			} catch(e) {}
+		}
 		function togglePlacementModal(show) {
 			setModalState('placement-modal', show);
 		}
@@ -8116,6 +8281,9 @@ const PLACEMENT_DATA = {
 				let currentRegion = 'none';
 				if (res.ok && data.success && data.placement) {
 					currentRegion = String(data.placement).trim().toLowerCase();
+					localStorage.setItem('zeus_cached_placement', currentRegion);
+					const flagEl = document.getElementById('placement-flag-emoji');
+					if (flagEl) flagEl.innerHTML = getPlacementEmoji(currentRegion);
 				}
 				document.getElementById('selected-placement-region').value = currentRegion === 'none' ? '' : currentRegion;
 				if (currentRegion === 'none' || currentRegion === 'off') {
@@ -8283,6 +8451,7 @@ const PLACEMENT_DATA = {
 					return;
 				}
 				if (res.ok && data.success) {
+					localStorage.setItem('zeus_cached_placement', regionValue);
 					showToast('✅ ریجن جدید با موفقیت اعمال و ورکر دیپلوی شد! در حال رفرش...');
 					togglePlacementModal(false);
 					setTimeout(() => window.location.reload(), 3000);
@@ -8394,16 +8563,6 @@ async function executeRocketCreate() {
 		Object.values(cachedIpsData).forEach(ips => { ipsList = ipsList.concat(ips); });
 		ipsList = [...new Set(ipsList)];
 		let domList = [...new Set(cachedDomainsData)];
-		const pickRandom = (list, num) => {
-			if (list.length === 0) return [];
-			if (num >= list.length) return list.slice();
-			const shuffled = list.slice();
-			for (let i = shuffled.length - 1; i > 0; i--) {
-				const j = Math.floor(Math.random() * (i + 1));
-				[shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
-			}
-			return shuffled.slice(0, num);
-		};
 		let count = 30;
 		let half = Math.ceil(count / 2);
 		let otherHalf = count - half;
@@ -9531,9 +9690,9 @@ async function executeRocketCreate() {
 			const expiry = document.getElementById('input-expiry').value || null;
 			const reqLimit = document.getElementById('input-req-limit').value || null;
 			const ipLimit = document.getElementById('input-ip-limit').value || null;
-			if (limit !== null && parseFloat(limit) < 0) { alert('⚠️ حجم نمی‌تواند عدد منفی باشد!'); submitButton.disabled = false; submitButton.innerText = isEditMode ? 'ذخیره تغییرات' : 'ایجاد کاربر'; return; }
-			if (expiry !== null && parseInt(expiry) < 0) { alert('⚠️ زمان (روز) نمی‌تواند عدد منفی باشد!'); submitButton.disabled = false; submitButton.innerText = isEditMode ? 'ذخیره تغییرات' : 'ایجاد کاربر'; return; }
-			if ((reqLimit !== null && parseInt(reqLimit) < 0) || (ipLimit !== null && parseInt(ipLimit) < 0)) { alert('⚠️ محدودیت‌ها نمی‌توانند منفی باشند!'); submitButton.disabled = false; submitButton.innerText = isEditMode ? 'ذخیره تغییرات' : 'ایجاد کاربر'; return; }
+			if (limit !== null && parseFloat(limit) < 0) { alert('⚠️ حجم نمی‌تواند عدد منفی باشد!'); updateSubmitBtnState(isEditMode ? 'ذخیره تغییرات' : 'ایجاد کاربر', false); return; }
+			if (expiry !== null && parseInt(expiry) < 0) { alert('⚠️ زمان (روز) نمی‌تواند عدد منفی باشد!'); updateSubmitBtnState(isEditMode ? 'ذخیره تغییرات' : 'ایجاد کاربر', false); return; }
+			if ((reqLimit !== null && parseInt(reqLimit) < 0) || (ipLimit !== null && parseInt(ipLimit) < 0)) { alert('⚠️ محدودیت‌ها نمی‌توانند منفی باشند!'); updateSubmitBtnState(isEditMode ? 'ذخیره تغییرات' : 'ایجاد کاربر', false); return; }
 			const autoResetToggle = document.getElementById('input-auto-reset-toggle').checked;
 			const autoResetVolDays = document.getElementById('input-auto-reset-vol').value;
 			const autoResetReqDays = document.getElementById('input-auto-reset-req').value;
@@ -9984,6 +10143,59 @@ function downloadZeusSource() {
 				card.classList.add('opacity-0', 'scale-95');
 			}
 		}
+		function attachHoldButtonAction(btn, prog, durationMs, onTrigger) {
+			if (!btn) return;
+			let holdTimer = null;
+			let startTime = 0;
+			let animFrame = null;
+			let secretClickCount = 0;
+			let lastClickTime = 0;
+			const stopHold = () => {
+				cancelAnimationFrame(animFrame);
+				if (holdTimer) clearTimeout(holdTimer);
+				holdTimer = null;
+				if (prog) prog.style.width = '0%';
+				btn.style.transform = 'scale(1)';
+			};
+			const triggerClose = () => {
+				stopHold();
+				if (onTrigger) onTrigger();
+			};
+			const startHold = (e) => {
+				stopHold();
+				startTime = performance.now();
+				btn.style.transform = 'scale(0.96)';
+				const animate = (time) => {
+					let elapsed = time - startTime;
+					let percent = Math.min((elapsed / durationMs) * 100, 100);
+					if (prog) prog.style.width = percent + '%';
+					if (percent < 100) {
+						animFrame = requestAnimationFrame(animate);
+					}
+				};
+				animFrame = requestAnimationFrame(animate);
+				holdTimer = setTimeout(triggerClose, durationMs);
+			};
+			const handleSecretClick = () => {
+				const now = Date.now();
+				if (now - lastClickTime < 400) {
+					secretClickCount++;
+				} else {
+					secretClickCount = 1;
+				}
+				lastClickTime = now;
+				if (secretClickCount >= 3) {
+					triggerClose();
+				}
+			};
+			btn.addEventListener('mousedown', startHold);
+			btn.addEventListener('touchstart', startHold, {passive: false});
+			btn.addEventListener('mouseup', stopHold);
+			btn.addEventListener('mouseleave', stopHold);
+			btn.addEventListener('touchend', stopHold);
+			btn.addEventListener('touchcancel', stopHold);
+			btn.addEventListener('click', handleSecretClick);
+		}
 	async function checkGlobalMessage() {
 		try {
 			const res = await fetchWithFallbackUI('message.txt?t=' + Date.now());
@@ -10003,202 +10215,16 @@ function downloadZeusSource() {
 				oldBtn.parentNode.replaceChild(newBtn, oldBtn);
 				const btn = document.getElementById('global-message-close-btn');
 				const prog = document.getElementById('global-message-progress');
-				let holdTimer = null;
-				let startTime = 0;
-				let animFrame = null;
-				let secretClickCount = 0;
-				let lastClickTime = 0;
-				const triggerClose = () => {
-					stopHold();
+				attachHoldButtonAction(btn, prog, 1000, () => {
 					setModalState('global-message-modal', false);
 					window.zeus_global_msg_version = version;
-					setTimeout(() => checkLoopWarning(), 500); 
-				};
-				const stopHold = () => {
-					cancelAnimationFrame(animFrame);
-					if (holdTimer) clearTimeout(holdTimer);
-					holdTimer = null;
-					if (prog) prog.style.width = '0%';
-					if (btn) btn.style.transform = 'scale(1)';
-				};
-				const startHold = (e) => {
-					stopHold();
-					startTime = performance.now();
-					if (btn) btn.style.transform = 'scale(0.96)';
-					const animate = (time) => {
-						let elapsed = time - startTime;
-						let percent = Math.min((elapsed / 1000) * 100, 100);
-						if (prog) prog.style.width = percent + '%';
-						if (percent < 100) {
-							animFrame = requestAnimationFrame(animate);
-						}
-					};
-					animFrame = requestAnimationFrame(animate);
-					holdTimer = setTimeout(triggerClose, 1000);
-				};
-				const handleSecretClick = () => {
-					const now = Date.now();
-					if (now - lastClickTime < 400) {
-						secretClickCount++;
-					} else {
-						secretClickCount = 1;
-					}
-					lastClickTime = now;
-					if (secretClickCount >= 3) {
-						triggerClose();
-					}
-				};
-				btn.addEventListener('mousedown', startHold);
-				btn.addEventListener('touchstart', startHold, {passive: false});
-				btn.addEventListener('mouseup', stopHold);
-				btn.addEventListener('mouseleave', stopHold);
-				btn.addEventListener('touchend', stopHold);
-				btn.addEventListener('touchcancel', stopHold);
-				btn.addEventListener('click', handleSecretClick);
+					setTimeout(() => checkLoopWarning(), 500);
+				});
 			} else {
 				checkLoopWarning(); 
 			}
 		} catch (err) {}
 	}
-		function getvIeesLink(username) {
-			const user = window.allUsers.find(u => u.username === username);
-			if (!user) return '';
-			const host = window.location.hostname;
-			var ips = [host];
-			if (user.ips) {
-				const parsedIps = user.ips.split('\\n').map(function(ip) { return ip.trim(); }).filter(function(ip) { return ip.length > 0; });
-				if (parsedIps.length > 0) ips = parsedIps;
-			}
-			var ports = String(user.port || '443').split(',').map(function(p) { return p.trim(); }).filter(function(p) { return p.length > 0; });
-			var fp = user.fingerprint || 'chrome';
-			const dynPath = encodeURIComponent("/stream/PANEL_ZEUS/" + (user.uuid ? user.uuid.split("-")[4] : "default"));
-			const links = [];
-		const m1 = decodeURIComponent('%E2%9A%A0%EF%B8%8F%20%D9%BE%D9%86%D9%84%20%D8%B1%D8%A7%DB%8C%DA%AF%D8%A7%D9%86%20%D9%88%20%D8%BA%DB%8C%D8%B1%20%D9%82%D8%A7%D8%A8%D9%84%20%D9%81%D8%B1%D9%88%D8%B4%20%E2%9A%A0%EF%B8%8F');
-		const m2 = decodeURIComponent('%F0%9F%9A%80%D8%B3%D8%A7%D8%AE%D8%AA%20%D8%B1%D8%A7%DB%8C%DA%AF%D8%A7%D9%86%20%40ZEUS_PANEL_BOT%20%F0%9F%9A%80');
-			let remVol = "∞";
-			if (user.limit_gb) {
-				let rem = user.limit_gb - (user.used_gb || 0);
-				remVol = rem > 0 ? rem.toFixed(2) + "GB" : "0GB";
-			}
-			let remTime = "∞";
-			if (user.expiry_days) {
-				if (user.start_on_first_connect === 1) {
-					if (user.first_connection_time) {
-						const expiryDate = new Date(user.first_connection_time + user.expiry_days * 86400000);
-						const diffDays = Math.ceil((expiryDate.getTime() - Date.now()) / 86400000);
-						remTime = diffDays > 0 ? diffDays + "Days" : "0Days";
-					} else {
-						remTime = user.expiry_days + "Days (Not Started)";
-					}
-				} else if (user.created_at) {
-					const created = new Date(user.created_at);
-					const expiryDate = new Date(created.getTime() + user.expiry_days * 86400000);
-					const diffDays = Math.ceil((expiryDate.getTime() - Date.now()) / 86400000);
-					remTime = diffDays > 0 ? diffDays + "Days" : "0Days";
-				}
-			}
-			let remReq = "∞";
-			if (user.limit_req) {
-				let rem = user.limit_req - (user.used_req || 0);
-				remReq = rem > 0 ? rem.toLocaleString() + "Req" : "0Req";
-			}
-			const infoRemark = "📊 remaining | \u200E" + remVol + " | \u200E" + remTime + " | \u200E" + remReq;
-links.push('vle' + 'ss://' + (user.uuid || '') + '@0.0.0.0:1?encryption=none&security=none&type=ws&host=' + host + '&path=' + dynPath + '#' + encodeURIComponent(infoRemark));
-			const rawPath = "/stream/PANEL_ZEUS/" + (user.uuid ? user.uuid.split("-")[4] : "default");
-			let proxyList = [];
-			try {
-				if (user.user_socks5 && user.user_socks5.trim().startsWith("[")) {
-					proxyList = JSON.parse(user.user_socks5);
-				} else if (user.user_socks5 || user.user_proxy_ip) {
-					proxyList = [user.user_socks5 || user.user_proxy_ip];
-				} else {
-					proxyList = [null];
-				}
-			} catch (e) {
-				proxyList = [user.user_socks5 || user.user_proxy_ip];
-			}
-			if (!Array.isArray(proxyList) || proxyList.length === 0) proxyList = [];
-			const allowDirect = user.enable_direct !== 0;
-			if (allowDirect) {
-				let hasDirect = proxyList.some(function(p) { return p === null || p === ""; });
-				if (!hasDirect) proxyList.push(null);
-			} else {
-				proxyList = proxyList.filter(function(p) { return p !== null && p !== ""; });
-			}
-			if (proxyList.length === 0) proxyList = [null];
-			let proxyFlagCache = {};
-			try { proxyFlagCache = JSON.parse(localStorage.getItem('proxy_flag_cache_v2') || '{}'); } catch(e) {}
-			let resolvedProxies = [];
-			for (let locIdx = 0; locIdx < proxyList.length; locIdx++) {
-				let proxyItem = proxyList[locIdx];
-				let proxyStr = typeof proxyItem === "object" && proxyItem !== null ? proxyItem.proxy : proxyItem;
-				let countryCode = typeof proxyItem === "object" && proxyItem !== null ? proxyItem.country : (!proxyStr ? (user.user_proxy_iata || "") : "");
-				let flagEmoji = "🌐";
-				if (countryCode && typeof getFlagEmojiText === 'function') {
-					flagEmoji = getFlagEmojiText(countryCode);
-				} else if (proxyStr && proxyFlagCache[proxyStr] && typeof getFlagEmojiText === 'function') {
-					flagEmoji = getFlagEmojiText(proxyFlagCache[proxyStr]);
-				}
-				const currentDynPath = encodeURIComponent(rawPath + ((proxyItem !== null && proxyItem !== "") ? "/loc-" + locIdx : ""));
-				resolvedProxies.push({ flagEmoji, currentDynPath });
-			}
-			const userConnType = String(user.connection_type || 'vless').toLowerCase();
-			const enableVless = userConnType.includes('vless') || userConnType === 'vl' + 'e' + 'ss' || (!userConnType.includes('trojan') && !userConnType.includes('shadowsocks'));
-			const enableTrojan = userConnType.includes('trojan');
-			const enableSS = userConnType.includes('shadowsocks');
-			ips.forEach((rawIp) => {
-				let ip = String(rawIp).trim();
-				const bMatch = ip.match(/^\[(.*?)\]/);
-				if (bMatch) ip = bMatch[1];
-				else if (ip.split(":").length === 2) ip = ip.split(":")[0];
-				let safeIp = ip.includes(":") && !ip.startsWith("[") ? '[' + ip + ']' : ip;
-				ports.forEach((portStr) => {
-					resolvedProxies.forEach((proxy) => {
-						const isTlsPort = ["443", "2053", "2083", "2087", "2096", "8443"].includes(portStr);
-						const tlsVal = isTlsPort ? "tls" : "none";
-						let echList = user.ech ? user.ech.split(',').map(function(e){return e.trim();}).filter(function(e){return e;}) : [""];
-						if (echList.length === 0) echList = [""];
-						let protoCounts = { UDP: 0, TCP: 0, DOH: 0, UNK: 0 };
-						echList.forEach((echItem) => {
-							let userFrag = "";
-							if (user.frag_len && user.frag_int) userFrag += "&fragment=" + encodeURIComponent(user.frag_len + "," + user.frag_int + (isTlsPort ? ",tlshello" : ""));
-							if (user.advanced_frag) userFrag += "&fm=" + encodeURIComponent(user.advanced_frag);
-							if (isTlsPort && user.cipher_suites) userFrag += "&cs=" + encodeURIComponent(user.cipher_suites);
-							if (user.tls_mask) userFrag += "&mask=" + encodeURIComponent(user.tls_mask);
-							if (isTlsPort && echItem) userFrag += "&ech=" + encodeURIComponent(echItem);
-							const tlsParams = isTlsPort ? ("&insecure=0&fp=" + fp + "&allowInsecure=0&sni=" + host) : "";
-							let echSuffix = "";
-							if (echList.length > 1 && echItem) {
-								let pType = "UNK";
-								if (echItem.includes("+udp://")) pType = "UDP";
-								else if (echItem.includes("+tcp://")) pType = "TCP";
-								else if (echItem.includes("+https://") || echItem.includes("dns-query")) pType = "DOH";
-								protoCounts[pType]++;
-								echSuffix = " | ECH-" + pType + "-" + protoCounts[pType];
-							}
-							if (enableVless) {
-								const remark = "ZEUS | " + proxy.flagEmoji + " | " + user.username + echSuffix;
-								links.push('vle' + 'ss://' + (user.uuid || '') + '@' + safeIp + ':' + portStr + '?path=' + proxy.currentDynPath + '&security=' + tlsVal + '&encryption=none&host=' + host + '&type=ws' + tlsParams + userFrag + '#' + encodeURIComponent(remark));
-							}
-							if (enableTrojan) {
-								const trojanRemark = "ZEUS | " + proxy.flagEmoji + " | " + user.username + echSuffix;
-								links.push('trojan://' + (user.uuid || '') + '@' + safeIp + ':' + portStr + '?path=' + proxy.currentDynPath + '&security=' + tlsVal + '&host=' + host + '&type=ws' + tlsParams + userFrag + '#' + encodeURIComponent(trojanRemark));
-							}
-							if (enableSS) {
-								const ssRemark = "ZEUS | " + proxy.flagEmoji + " | " + user.username + echSuffix;
-								const methodPass = btoa("aes-256-gcm:" + (user.uuid || ''));
-								let pluginOpts = "v2ray-plugin;mode=websocket;host=" + host + ";path=" + decodeURIComponent(proxy.currentDynPath) + (isTlsPort ? ";tls" : "");
-								let pluginStr = encodeURIComponent(pluginOpts);
-								links.push("ss://" + methodPass + "@" + safeIp + ":" + portStr + "/?plugin=" + pluginStr + "#" + encodeURIComponent(ssRemark));
-							}
-						});
-					});
-				});
-			});
-			links.push('vle' + 'ss://' + (user.uuid || '') + '@0.0.0.0:1?encryption=none&security=none&type=ws&host=' + host + '&path=' + dynPath + '#' + encodeURIComponent(m1));
-			links.push('vle' + 'ss://' + (user.uuid || '') + '@0.0.0.0:1?encryption=none&security=none&type=ws&host=' + host + '&path=' + dynPath + '#' + encodeURIComponent(m2));
-			return links.join('\\n');
-		}
 		function getSubLink(username) {
 			return window.location.origin + '/feed/' + encodeURIComponent(username);
 		}
@@ -10253,28 +10279,6 @@ links.push('vle' + 'ss://' + (user.uuid || '') + '@0.0.0.0:1?encryption=none&sec
 				qrCode.append(container);
 			}
 			setModalState('qr-modal', show);
-		}
-		function downloadQrCode() {
-			const container = document.getElementById('qrcode-container');
-			if (!container) return;
-			const canvas = container.querySelector('canvas');
-			const img = container.querySelector('img');
-			let dataUrl = '';
-			if (canvas) {
-				dataUrl = canvas.toDataURL("image/png");
-			} else if (img && img.src) {
-				dataUrl = img.src;
-			}
-			if (!dataUrl) {
-				alert('⚠️ تصویر QR برای دانلود یافت نشد!');
-				return;
-			}
-			const downloadAnchor = document.createElement('a');
-			downloadAnchor.href = dataUrl;
-			downloadAnchor.download = "zeus_qrcode_" + Date.now() + ".png";
-			document.body.appendChild(downloadAnchor);
-			downloadAnchor.click();
-			downloadAnchor.remove();
 		}
 		function showSubQr(encodedUsername) {
 			const username = decodeURIComponent(encodedUsername);
@@ -10404,8 +10408,6 @@ function editUser(encodedUsername) {
 	const customPortInput = document.getElementById('input-custom-ports');
 	if (customPortInput) customPortInput.value = customPorts.join(' ');
 	const userProxyToggle = document.getElementById('user-proxy-mode-toggle');
-	const userSocksInput = document.getElementById('user-socks5-input');
-	const targetProxy = user.user_socks5 || user.user_proxy_ip;
 	const userProxyResult = document.getElementById('test-user-proxy-result');
 	if (userProxyResult) userProxyResult.innerText = '';
 	window.proxyFieldsData = [""];
@@ -10452,22 +10454,6 @@ function editUser(encodedUsername) {
 				} catch (err) {
 					alert('خطا در برقراری ارتباط با سرور');
 				}
-			}
-		}
-		function getFlagEmoji(countryCode) {
-			if (!countryCode) return '<span class="zeus-flag-globe">🌐</span>';
-			const cc = String(countryCode).toLowerCase().replace(/[^a-z]/g, '');
-			if (cc.length !== 2) return '<span class="zeus-flag-globe">🌐</span>';
-			return '<span class="fi fi-' + cc + ' zeus-flag" title="' + cc.toUpperCase() + '"></span>';
-		}
-		function getFlagEmojiText(countryCode) {
-			if (!countryCode) return '🌐';
-			const cc = String(countryCode).toUpperCase().replace(/[^A-Z]/g, '');
-			if (cc.length !== 2) return '🌐';
-			try {
-				return String.fromCodePoint(...cc.split('').map(char => 127397 + char.charCodeAt(0)));
-			} catch (e) {
-				return '🌐';
 			}
 		}
 window.toggleGfx = async function(isChecked) {
@@ -10960,7 +10946,7 @@ async function testUserSocksProxy() {
 				window.location.reload();
 			}
 		}
-const CURRENT_VERSION = '2.3.0';
+const CURRENT_VERSION = '2.3.1';
 const UPDATE_FIX = "constsCURRENT_VERSION='d.d.d'";
 		window.autoUpdateStatusCache = false;
 		async function checkAutoUpdateSetup() {
@@ -11432,16 +11418,6 @@ function applySelectedIps() {
         ipv6: [...new Set(cachedIpv6Data)],
         domain: [...new Set(cachedDomainsData)]
     };
-    const pickRandom = (list, num) => {
-        if (list.length === 0) return [];
-        if (num >= list.length) return list.slice();
-        const shuffled = list.slice();
-        for (let i = shuffled.length - 1; i > 0; i--) {
-            const j = Math.floor(Math.random() * (i + 1));
-            [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
-        }
-        return shuffled.slice(0, num);
-    };
     const active = selectedTypes.map(t => pools[t] || []).filter(l => l.length > 0);
     const demands = new Array(active.length).fill(0);
     let left = Math.min(count, active.reduce((sum, list) => sum + list.length, 0));
@@ -11586,58 +11562,9 @@ function applySelectedIps() {
 				}
 				const btn = document.getElementById('free-panel-close-btn');
 				const prog = document.getElementById('free-panel-progress');
-				let holdTimer = null;
-				let startTime = 0;
-				let animFrame = null;
-				let secretClickCount = 0;
-				let lastClickTime = 0;
-				const triggerClose = () => {
-					stopHold();
+				attachHoldButtonAction(btn, prog, 2000, () => {
 					closeFreePanelWarning();
-				};
-				const stopHold = () => {
-					cancelAnimationFrame(animFrame);
-					if (holdTimer) clearTimeout(holdTimer);
-					holdTimer = null;
-					if (prog) prog.style.width = '0%';
-					if (btn) btn.style.transform = 'scale(1)';
-				};
-				const startHold = (e) => {
-					stopHold();
-					startTime = performance.now();
-					if (btn) btn.style.transform = 'scale(0.96)';
-					const animate = (time) => {
-						let elapsed = time - startTime;
-						let percent = Math.min((elapsed / 2000) * 100, 100);
-						if (prog) prog.style.width = percent + '%';
-						if (percent < 100) {
-							animFrame = requestAnimationFrame(animate);
-						}
-					};
-					animFrame = requestAnimationFrame(animate);
-					holdTimer = setTimeout(triggerClose, 2000);
-				};
-				const handleSecretClick = () => {
-					const now = Date.now();
-					if (now - lastClickTime < 400) {
-						secretClickCount++;
-					} else {
-						secretClickCount = 1;
-					}
-					lastClickTime = now;
-					if (secretClickCount >= 3) {
-						triggerClose();
-					}
-				};
-				if (btn) {
-					btn.addEventListener('mousedown', startHold);
-					btn.addEventListener('touchstart', startHold, {passive: false});
-					btn.addEventListener('mouseup', stopHold);
-					btn.addEventListener('mouseleave', stopHold);
-					btn.addEventListener('touchend', stopHold);
-					btn.addEventListener('touchcancel', stopHold);
-					btn.addEventListener('click', handleSecretClick);
-				}
+				});
 			}, 6000);
 			const gfxToggle = document.getElementById('gfx-toggle');
 			if (gfxToggle) {
@@ -11651,7 +11578,8 @@ function applySelectedIps() {
 			if (versionBadge) versionBadge.innerText = 'v' + CURRENT_VERSION;
 			renderPortCheckboxes();
 			initVipCache();
-			loadUsers();
+			updatePlacementCapsuleUI();
+						loadUsers();
 			window.usersRefreshIntervalId = null;
 			window.startRefreshInterval = function(intervalMs) {
 				if (window.usersRefreshIntervalId) {
@@ -12407,147 +12335,9 @@ ${COMMON_TOAST_HTML}
 	<script>
 		/* {{USER_DATA_PLACEHOLDER}} */
 		${COMMON_TOAST_JS}
+		${COMMON_SHARED_FUNCS_JS}
 		function getHost() {
 			return window.location.host;
-		}
-		function getvIeesLink() {
-			const user = window.statusUser;
-			if (!user) return '';
-			const host = getHost();
-			var ips = [host];
-			if (user.ips) {
-				const parsedIps = user.ips.split('\\n').map(function(ip) { return ip.trim(); }).filter(function(ip) { return ip.length > 0; });
-				if (parsedIps.length > 0) ips = parsedIps;
-			}
-			var ports = String(user.port || '443').split(',').map(function(p) { return p.trim(); }).filter(function(p) { return p.length > 0; });
-			var fp = user.fingerprint || 'chrome';
-			const dynPath = encodeURIComponent("/stream/PANEL_ZEUS/" + (user.uuid ? user.uuid.split("-")[4] : "default"));
-			const links = [];
-			const m1 = decodeURIComponent('%E2%9A%A0%EF%B8%8F%20%D9%BE%D9%86%D9%84%20%D8%B1%D8%A7%DB%8C%DA%AF%D8%A7%D9%86%20%D9%88%20%D8%BA%DB%8C%D8%B1%20%D9%82%D8%A7%D8%A8%D9%84%20%D9%81%D8%B1%D9%88%D8%B4%20%E2%9A%A0%EF%B8%8F');
-			const m2 = decodeURIComponent('%F0%9F%9A%80%D8%B3%D8%A7%D8%AE%D8%AA%20%D8%B1%D8%A7%DB%8C%DA%AF%D8%A7%D9%86%20%40ZEUS_PANEL_BOT%20%F0%9F%9A%80');
-			let remVol = "∞";
-			if (user.limit_gb) {
-				let rem = user.limit_gb - (user.used_gb || 0);
-				remVol = rem > 0 ? rem.toFixed(2) + "GB" : "0GB";
-			}
-			let remTime = "∞";
-			if (user.expiry_days) {
-				if (user.start_on_first_connect === 1) {
-					if (user.first_connection_time) {
-						const expiryDate = new Date(user.first_connection_time + user.expiry_days * 86400000);
-						const diffDays = Math.ceil((expiryDate.getTime() - Date.now()) / 86400000);
-						remTime = diffDays > 0 ? diffDays + "Days" : "0Days";
-					} else {
-						remTime = user.expiry_days + "Days (Not Started)";
-					}
-				} else if (user.created_at) {
-					const created = new Date(user.created_at);
-					const expiryDate = new Date(created.getTime() + user.expiry_days * 86400000);
-					const diffDays = Math.ceil((expiryDate.getTime() - Date.now()) / 86400000);
-					remTime = diffDays > 0 ? diffDays + "Days" : "0Days";
-				}
-			}
-			let remReq = "∞";
-			if (user.limit_req) {
-				let rem = user.limit_req - (user.used_req || 0);
-				remReq = rem > 0 ? rem.toLocaleString() + "Req" : "0Req";
-			}
-			const infoRemark = "📊 remaining | \u200E" + remVol + " | \u200E" + remTime + " | \u200E" + remReq;
-			links.push('vle' + 'ss://' + (user.uuid || '') + '@0.0.0.0:1?encryption=none&security=none&type=ws&host=' + host + '&path=' + dynPath + '#' + encodeURIComponent(infoRemark));
-			const rawPath = "/stream/PANEL_ZEUS/" + (user.uuid ? user.uuid.split("-")[4] : "default");
-			let proxyList = [];
-			try {
-				if (user.user_socks5 && user.user_socks5.trim().startsWith("[")) {
-					proxyList = JSON.parse(user.user_socks5);
-				} else if (user.user_socks5 || user.user_proxy_ip) {
-					proxyList = [user.user_socks5 || user.user_proxy_ip];
-				} else {
-					proxyList = [null];
-				}
-			} catch (e) {
-				proxyList = [user.user_socks5 || user.user_proxy_ip];
-			}
-			if (!Array.isArray(proxyList) || proxyList.length === 0) proxyList = [];
-			const allowDirect = user.enable_direct !== 0;
-			if (allowDirect) {
-				let hasDirect = proxyList.some(function(p) { return p === null || p === ""; });
-				if (!hasDirect) proxyList.push(null);
-			} else {
-				proxyList = proxyList.filter(function(p) { return p !== null && p !== ""; });
-			}
-			if (proxyList.length === 0) proxyList = [null];
-			let proxyFlagCache = {};
-			try { proxyFlagCache = JSON.parse(localStorage.getItem('proxy_flag_cache_v2') || '{}'); } catch(e) {}
-			let resolvedProxies = [];
-			for (let locIdx = 0; locIdx < proxyList.length; locIdx++) {
-				let proxyItem = proxyList[locIdx];
-				let proxyStr = typeof proxyItem === "object" && proxyItem !== null ? proxyItem.proxy : proxyItem;
-				let countryCode = typeof proxyItem === "object" && proxyItem !== null ? proxyItem.country : (!proxyStr ? (user.user_proxy_iata || "") : "");
-				let flagEmoji = "🌐";
-				if (countryCode && typeof getFlagEmojiText === 'function') {
-					flagEmoji = getFlagEmojiText(countryCode);
-				} else if (proxyStr && proxyFlagCache[proxyStr] && typeof getFlagEmojiText === 'function') {
-					flagEmoji = getFlagEmojiText(proxyFlagCache[proxyStr]);
-				}
-				const currentDynPath = encodeURIComponent(rawPath + ((proxyItem !== null && proxyItem !== "") ? "/loc-" + locIdx : ""));
-				resolvedProxies.push({ flagEmoji, currentDynPath });
-			}
-			const userConnType = String(user.connection_type || 'vless').toLowerCase();
-			const enableVless = userConnType.includes('vless') || userConnType === 'vl' + 'e' + 'ss' || (!userConnType.includes('trojan') && !userConnType.includes('shadowsocks'));
-			const enableTrojan = userConnType.includes('trojan');
-			const enableSS = userConnType.includes('shadowsocks');
-			ips.forEach((rawIp) => {
-				let ip = String(rawIp).trim();
-				const bMatch = ip.match(/^\[(.*?)\]/);
-				if (bMatch) ip = bMatch[1];
-				else if (ip.split(":").length === 2) ip = ip.split(":")[0];
-				let safeIp = ip.includes(":") && !ip.startsWith("[") ? '[' + ip + ']' : ip;
-				ports.forEach((portStr) => {
-					resolvedProxies.forEach((proxy) => {
-						const isTlsPort = ["443", "2053", "2083", "2087", "2096", "8443"].includes(portStr);
-						const tlsVal = isTlsPort ? "tls" : "none";
-						let echList = user.ech ? user.ech.split(',').map(function(e){return e.trim();}).filter(function(e){return e;}) : [""];
-						if (echList.length === 0) echList = [""];
-						let protoCounts = { UDP: 0, TCP: 0, DOH: 0, UNK: 0 };
-						echList.forEach((echItem) => {
-							let userFrag = "";
-							if (user.frag_len && user.frag_int) userFrag += "&fragment=" + encodeURIComponent(user.frag_len + "," + user.frag_int + (isTlsPort ? ",tlshello" : ""));
-							if (user.advanced_frag) userFrag += "&fm=" + encodeURIComponent(user.advanced_frag);
-							if (isTlsPort && user.cipher_suites) userFrag += "&cs=" + encodeURIComponent(user.cipher_suites);
-							if (user.tls_mask) userFrag += "&mask=" + encodeURIComponent(user.tls_mask);
-							if (isTlsPort && echItem) userFrag += "&ech=" + encodeURIComponent(echItem);
-							const tlsParams = isTlsPort ? ("&insecure=0&fp=" + fp + "&allowInsecure=0&sni=" + host) : "";
-							let echSuffix = "";
-							if (echList.length > 1 && echItem) {
-								let pType = "UNK";
-								if (echItem.includes("+udp://")) pType = "UDP";
-								else if (echItem.includes("+tcp://")) pType = "TCP";
-								else if (echItem.includes("+https://") || echItem.includes("dns-query")) pType = "DOH";
-								protoCounts[pType]++;
-								echSuffix = " | ECH-" + pType + "-" + protoCounts[pType];
-							}
-							if (enableVless) {
-								const remark = "ZEUS | " + proxy.flagEmoji + " | " + user.username + echSuffix;
-								links.push('vle' + 'ss://' + (user.uuid || '') + '@' + safeIp + ':' + portStr + '?path=' + proxy.currentDynPath + '&security=' + tlsVal + '&encryption=none&host=' + host + '&type=ws' + tlsParams + userFrag + '#' + encodeURIComponent(remark));
-							}
-							if (enableTrojan) {
-								const trojanRemark = "ZEUS | " + proxy.flagEmoji + " | " + user.username + echSuffix;
-								links.push('trojan://' + (user.uuid || '') + '@' + safeIp + ':' + portStr + '?path=' + proxy.currentDynPath + '&security=' + tlsVal + '&host=' + host + '&type=ws' + tlsParams + userFrag + '#' + encodeURIComponent(trojanRemark));
-							}
-							if (enableSS) {
-								const ssRemark = "ZEUS | " + proxy.flagEmoji + " | " + user.username + echSuffix;
-								const methodPass = btoa("aes-256-gcm:" + (user.uuid || ''));
-								let pluginOpts = "v2ray-plugin;mode=websocket;host=" + host + ";path=" + decodeURIComponent(proxy.currentDynPath) + (isTlsPort ? ";tls" : "");
-								let pluginStr = encodeURIComponent(pluginOpts);
-								links.push("ss://" + methodPass + "@" + safeIp + ":" + portStr + "/?plugin=" + pluginStr + "#" + encodeURIComponent(ssRemark));
-							}
-						});
-					});
-				});
-			});
-			links.push('vle' + 'ss://' + (user.uuid || '') + '@0.0.0.0:1?encryption=none&security=none&type=ws&host=' + host + '&path=' + dynPath + '#' + encodeURIComponent(m1));
-			links.push('vle' + 'ss://' + (user.uuid || '') + '@0.0.0.0:1?encryption=none&security=none&type=ws&host=' + host + '&path=' + dynPath + '#' + encodeURIComponent(m2));
-			return links.join('\\n');
 		}
 		function copyvIeesConfig() {
 			navigator.clipboard.writeText(getvIeesLink()).then(() => alert('✅ کـانفـیگ با موفقیت کپی شد!'));
@@ -12600,47 +12390,9 @@ ${COMMON_TOAST_HTML}
 				card.classList.add('opacity-0', 'scale-95');
 			}
 		}
-		function downloadQrCode() {
-			const container = document.getElementById('qrcode-container');
-			if (!container) return;
-			const canvas = container.querySelector('canvas');
-			const img = container.querySelector('img');
-			let dataUrl = '';
-			if (canvas) {
-				dataUrl = canvas.toDataURL("image/png");
-			} else if (img && img.src) {
-				dataUrl = img.src;
-			}
-			if (!dataUrl) {
-				alert('⚠️ تصویر QR برای دانلود یافت نشد!');
-				return;
-			}
-			const downloadAnchor = document.createElement('a');
-			downloadAnchor.href = dataUrl;
-			downloadAnchor.download = "zeus_qrcode_" + Date.now() + ".png";
-			document.body.appendChild(downloadAnchor);
-			downloadAnchor.click();
-			downloadAnchor.remove();
-		}
 		function showSubQr() {
 			const link = window.location.protocol + '//' + getHost() + '/sub/' + encodeURIComponent(window.statusUser.username);
 			toggleQrModal(true, link);
-		}
-		function getFlagEmoji(countryCode) {
-			if (!countryCode) return '<span class="zeus-flag-globe">🌐</span>';
-			const cc = String(countryCode).toLowerCase().replace(/[^a-z]/g, '');
-			if (cc.length !== 2) return '<span class="zeus-flag-globe">🌐</span>';
-			return '<span class="fi fi-' + cc + ' zeus-flag" title="' + cc.toUpperCase() + '"></span>';
-		}
-		function getFlagEmojiText(countryCode) {
-			if (!countryCode) return '🌐';
-			const cc = String(countryCode).toUpperCase().replace(/[^A-Z]/g, '');
-			if (cc.length !== 2) return '🌐';
-			try {
-				return String.fromCodePoint(...cc.split('').map(char => 127397 + char.charCodeAt(0)));
-			} catch (e) {
-				return '🌐';
-			}
 		}
 		document.addEventListener('DOMContentLoaded', () => {
 			const u = window.statusUser;
