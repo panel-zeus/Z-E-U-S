@@ -1301,8 +1301,10 @@ const Router = {
 					let placementConfig = { mode: "smart" };
 					if (targetRegion === "off") {
 						placementConfig = { mode: "off" };
-					} else if (targetRegion && targetRegion !== "smart") {
-						placementConfig = { region: targetRegion };
+					} else if (targetRegion === "smart") {
+						placementConfig = { mode: "smart" };
+					} else if (targetRegion) {
+						placementConfig = { mode: "smart", region: targetRegion };
 					}
 					let currentConfigs = {};
 					let projectFound = false;
@@ -1330,17 +1332,31 @@ const Router = {
 						} catch (e) {}
 					}
 
-					const prodConfig = currentConfigs.production || {};
-					prodConfig.placement = placementConfig;
-					currentConfigs.production = prodConfig;
-
-					const patchRes = await fetch(`https://api.cloudflare.com/client/v4/accounts/${currentAccountId}/pages/projects/${projectName}`, {
+					let patchRes = await fetch(`https://api.cloudflare.com/client/v4/accounts/${currentAccountId}/pages/projects/${projectName}`, {
 						method: "PATCH",
 						headers: { ...cfHeaders, "Content-Type": "application/json" },
 						body: JSON.stringify({
-							deployment_configs: currentConfigs
+							deployment_configs: {
+								production: { placement: placementConfig },
+								preview: { placement: placementConfig }
+							}
 						})
 					});
+					if (!patchRes.ok) {
+						const prodConfig = currentConfigs.production || {};
+						prodConfig.placement = placementConfig;
+						currentConfigs.production = prodConfig;
+						const prevConfig = currentConfigs.preview || {};
+						prevConfig.placement = placementConfig;
+						currentConfigs.preview = prevConfig;
+						patchRes = await fetch(`https://api.cloudflare.com/client/v4/accounts/${currentAccountId}/pages/projects/${projectName}`, {
+							method: "PATCH",
+							headers: { ...cfHeaders, "Content-Type": "application/json" },
+							body: JSON.stringify({
+								deployment_configs: currentConfigs
+							})
+						});
+					}
 					if (!patchRes.ok) {
 						const errText = await patchRes.text().catch(() => "");
 						let cfErrorMsg = errText.substring(0, 150);
@@ -1494,10 +1510,15 @@ const Router = {
 						if (pagesData.success && pagesData.result) {
 							const p = pagesData.result.deployment_configs?.production?.placement;
 							if (p) {
-								const mode = (p.mode || "").toLowerCase();
-								if (mode === "smart" || mode === "off") placement = mode;
-								else if (p.region) placement = p.region.toLowerCase();
-								else if (mode === "targeted") placement = "targeted";
+								if (p.region) {
+									placement = p.region.toLowerCase();
+								} else if (p.target && Array.isArray(p.target) && p.target.length > 0 && p.target[0].region) {
+									placement = p.target[0].region.toLowerCase();
+								} else if (p.mode) {
+									const mode = p.mode.toLowerCase();
+									if (mode === "smart" || mode === "off") placement = mode;
+									else if (mode === "targeted") placement = "targeted";
+								}
 							}
 						}
 					}
@@ -1550,10 +1571,15 @@ const Router = {
 									if (pagesData.success && pagesData.result) {
 										const p = pagesData.result.deployment_configs?.production?.placement;
 										if (p) {
-											const mode = (p.mode || "").toLowerCase();
-											if (mode === "smart" || mode === "off") placement = mode;
-											else if (p.region) placement = p.region.toLowerCase();
-											else if (mode === "targeted") placement = "targeted";
+											if (p.region) {
+												placement = p.region.toLowerCase();
+											} else if (p.target && Array.isArray(p.target) && p.target.length > 0 && p.target[0].region) {
+												placement = p.target[0].region.toLowerCase();
+											} else if (p.mode) {
+												const mode = p.mode.toLowerCase();
+												if (mode === "smart" || mode === "off") placement = mode;
+												else if (mode === "targeted") placement = "targeted";
+											}
 										}
 									}
 								}
@@ -1561,7 +1587,15 @@ const Router = {
 						}
 					}
 				}
-				await env.DB.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('worker_placement', ?)").bind(placement).run();
+				const dbSavedRow = await env.DB.prepare("SELECT value FROM settings WHERE key = 'worker_placement'").first();
+				const dbSavedPlacement = dbSavedRow && dbSavedRow.value ? dbSavedRow.value.trim().toLowerCase() : null;
+				if (placement && placement !== "smart") {
+					await env.DB.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('worker_placement', ?)").bind(placement).run();
+				} else if (dbSavedPlacement && dbSavedPlacement !== "smart" && dbSavedPlacement !== "off") {
+					placement = dbSavedPlacement;
+				} else {
+					await env.DB.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('worker_placement', ?)").bind(placement).run();
+				}
 				return new Response(JSON.stringify({ success: true, placement }), { headers: { "Content-Type": "application/json" } });
 			} catch (err) {
 				return new Response(JSON.stringify({ error: err.message }), { status: 400, headers: { "Content-Type": "application/json" } });
