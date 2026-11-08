@@ -466,7 +466,7 @@ function obfuscateSourceForUpdate(sourceCode) {
 	const fixRegex = new RegExp("(?:const|let|var)\\s+UPDATE_" + "FIX\\s*=\\s*(['\"])([^'\"]+)\\1");
 	const verMatch = code.match(verRegex);
 	const fixMatch = code.match(fixRegex);
-	const versionStr = verMatch ? verMatch[2] : "2.3.1";
+	const versionStr = verMatch ? verMatch[2] : "2.3.2";
 	const updateFixStr = fixMatch ? fixMatch[2] : "constsCURRENT_VERSION='d.d.d'";
 	const xorKey1 = 198;
 	const xorKey2 = 124;
@@ -975,7 +975,8 @@ const Router = {
 				const host = url.hostname;
 				let isAuthorized = false;
 				if (host.endsWith(".pages.dev")) {
-					const projectName = host.split(".")[0];
+					const hostParts = host.split(".");
+					const projectName = env.WORKER_NAME || (hostParts.length >= 3 ? hostParts[hostParts.length - 3] : hostParts[0]);
 					const accountsRes = await fetch("https://api.cloudflare.com/client/v4/accounts", {
 						headers: { Authorization: "Bearer " + api_token },
 					});
@@ -1141,14 +1142,58 @@ const Router = {
 				if (!githubRes.ok) throw new Error("خطا در دریافت سورس جدید از گیت‌هاب (وضعیت: " + githubRes.status + ")");
 				const rawNewCode = await githubRes.text();
 				const newCode = obfuscateSourceForUpdate(rawNewCode);
-				const isPages = Boolean(env.IS_PAGES === "true" || env.CF_PAGES || (url.hostname && url.hostname.endsWith(".pages.dev")));
-				const scriptName = env.WORKER_NAME || (env.CF_PAGES_PROJECT_NAME || url.hostname.split(".")[0]);
+				const isPages = Boolean(env.IS_PAGES === "true" || env.CF_PAGES || env.CF_PAGES_URL || env.CF_PAGES_BRANCH || (url.hostname && url.hostname.endsWith(".pages.dev")));
+				const getCleanScriptName = () => {
+					if (env.WORKER_NAME) return env.WORKER_NAME;
+					if (env.CF_PAGES_PROJECT_NAME) return env.CF_PAGES_PROJECT_NAME;
+					const parts = (url.hostname || "").split(".");
+					if (parts.length >= 3 && parts[parts.length - 2] === "pages" && parts[parts.length - 1] === "dev") {
+						return parts[parts.length - 3];
+					}
+					return parts[0] || "";
+				};
+				const scriptName = getCleanScriptName();
 				const deployPagesUpdate = async () => {
+					let targetProject = scriptName;
+					try {
+						const getProj = await fetch(`https://api.cloudflare.com/client/v4/accounts/${currentAccountId}/pages/projects/${targetProject}`, { headers: cfHeaders });
+						const projData = await getProj.json().catch(() => ({}));
+						if (projData.success && projData.result?.deployment_configs) {
+							const configs = projData.result.deployment_configs;
+							const prod = configs.production || {};
+							prod.compatibility_flags = ["nodejs_compat", "allow_eval_during_startup"];
+							configs.production = prod;
+							await fetch(`https://api.cloudflare.com/client/v4/accounts/${currentAccountId}/pages/projects/${targetProject}`, {
+								method: "PATCH",
+								headers: { ...cfHeaders, "Content-Type": "application/json" },
+								body: JSON.stringify({ deployment_configs: configs })
+							});
+						} else if (!projData.success) {
+							const listRes = await fetch(`https://api.cloudflare.com/client/v4/accounts/${currentAccountId}/pages/projects`, { headers: cfHeaders });
+							const listData = await listRes.json().catch(() => ({}));
+							if (listData.success && Array.isArray(listData.result) && listData.result.length > 0) {
+								const match = listData.result.find(p => p.name === targetProject || (url.hostname && url.hostname.includes(p.name))) || listData.result[0];
+								if (match) {
+									targetProject = match.name;
+									const configs = match.deployment_configs || {};
+									const prod = configs.production || {};
+									prod.compatibility_flags = ["nodejs_compat", "allow_eval_during_startup"];
+									configs.production = prod;
+									await fetch(`https://api.cloudflare.com/client/v4/accounts/${currentAccountId}/pages/projects/${targetProject}`, {
+										method: "PATCH",
+										headers: { ...cfHeaders, "Content-Type": "application/json" },
+										body: JSON.stringify({ deployment_configs: configs })
+									});
+								}
+							}
+						}
+					} catch(e) {}
 					const formData = new FormData();
 					formData.append("manifest", JSON.stringify({}));
+					formData.append("_routes.json", JSON.stringify({ version: 1, include: ["/*"], exclude: [] }));
 					formData.append("_worker.js", new Blob([newCode], { type: "application/javascript" }), "_worker.js");
 					formData.append("branch", "main");
-					const deployRes = await fetch(`https://api.cloudflare.com/client/v4/accounts/${currentAccountId}/pages/projects/${scriptName}/deployments`, {
+					const deployRes = await fetch(`https://api.cloudflare.com/client/v4/accounts/${currentAccountId}/pages/projects/${targetProject}/deployments`, {
 						method: "POST",
 						headers: { Authorization: "Bearer " + currentToken },
 						body: formData
@@ -1238,11 +1283,21 @@ const Router = {
 					currentAccountId = accData.result[0].id;
 				}
 				await env.DB.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('cf_token', ?)").bind(currentToken).run();
-				const isPages = Boolean(env.IS_PAGES === "true" || env.CF_PAGES || (url.hostname && url.hostname.endsWith(".pages.dev")));
-				const scriptName = env.WORKER_NAME || (env.CF_PAGES_PROJECT_NAME || url.hostname.split(".")[0]);
+				const isPages = Boolean(env.IS_PAGES === "true" || env.CF_PAGES || env.CF_PAGES_URL || env.CF_PAGES_BRANCH || (url.hostname && url.hostname.endsWith(".pages.dev")));
+				const getCleanScriptName = () => {
+					if (env.WORKER_NAME) return env.WORKER_NAME;
+					if (env.CF_PAGES_PROJECT_NAME) return env.CF_PAGES_PROJECT_NAME;
+					const parts = (url.hostname || "").split(".");
+					if (parts.length >= 3 && parts[parts.length - 2] === "pages" && parts[parts.length - 1] === "dev") {
+						return parts[parts.length - 3];
+					}
+					return parts[0] || "";
+				};
+				const scriptName = getCleanScriptName();
 				const targetRegion = (body.region || "smart").trim().toLowerCase();
 
-				const handlePagesPlacement = async () => {
+				const handlePagesPlacement = async (targetProj) => {
+					let projectName = targetProj || scriptName;
 					let placementConfig = { mode: "smart" };
 					if (targetRegion === "off") {
 						placementConfig = { mode: "off" };
@@ -1250,19 +1305,36 @@ const Router = {
 						placementConfig = { region: targetRegion };
 					}
 					let currentConfigs = {};
+					let projectFound = false;
 					try {
-						const getProjRes = await fetch(`https://api.cloudflare.com/client/v4/accounts/${currentAccountId}/pages/projects/${scriptName}`, { headers: cfHeaders });
+						const getProjRes = await fetch(`https://api.cloudflare.com/client/v4/accounts/${currentAccountId}/pages/projects/${projectName}`, { headers: cfHeaders });
 						const getProjData = await getProjRes.json().catch(() => ({}));
-						if (getProjData.success && getProjData.result && getProjData.result.deployment_configs) {
-							currentConfigs = getProjData.result.deployment_configs;
+						if (getProjData.success && getProjData.result) {
+							projectFound = true;
+							currentConfigs = getProjData.result.deployment_configs || {};
 						}
 					} catch (e) {}
+
+					if (!projectFound) {
+						try {
+							const listRes = await fetch(`https://api.cloudflare.com/client/v4/accounts/${currentAccountId}/pages/projects`, { headers: cfHeaders });
+							const listData = await listRes.json().catch(() => ({}));
+							if (listData.success && Array.isArray(listData.result) && listData.result.length > 0) {
+								const match = listData.result.find(p => p.name === projectName || (url.hostname && url.hostname.includes(p.name))) || listData.result[0];
+								if (match) {
+									projectName = match.name;
+									currentConfigs = match.deployment_configs || {};
+									projectFound = true;
+								}
+							}
+						} catch (e) {}
+					}
 
 					const prodConfig = currentConfigs.production || {};
 					prodConfig.placement = placementConfig;
 					currentConfigs.production = prodConfig;
 
-					const patchRes = await fetch(`https://api.cloudflare.com/client/v4/accounts/${currentAccountId}/pages/projects/${scriptName}`, {
+					const patchRes = await fetch(`https://api.cloudflare.com/client/v4/accounts/${currentAccountId}/pages/projects/${projectName}`, {
 						method: "PATCH",
 						headers: { ...cfHeaders, "Content-Type": "application/json" },
 						body: JSON.stringify({
@@ -1294,7 +1366,7 @@ const Router = {
 				});
 				if (!contentRes.ok) {
 					const errText = await contentRes.text().catch(() => "");
-					if (contentRes.status === 404 || errText.includes("10007") || errText.toLowerCase().includes("does not exist")) {
+					if (contentRes.status === 404 || errText.includes("10007") || errText.toLowerCase().includes("does not exist") || errText.toLowerCase().includes("not found")) {
 						return await handlePagesPlacement();
 					}
 					throw new Error("خطا در دریافت سورس فعلی ورکر: " + errText.substring(0, 150));
@@ -1339,7 +1411,6 @@ const Router = {
 					compatibility_flags: ["nodejs_compat"],
 					bindings: newBindings,
 				};
-				const targetRegion = (body.region || "smart").trim().toLowerCase();
 				if (targetRegion === "smart") {
 					metadata.placement = { mode: "smart" };
 				} else if (targetRegion === "off") {
@@ -1402,8 +1473,17 @@ const Router = {
 				if (bodyToken) {
 					await env.DB.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('cf_token', ?)").bind(currentToken).run();
 				}
-				const isPages = Boolean(env.IS_PAGES === "true" || env.CF_PAGES || (url.hostname && url.hostname.endsWith(".pages.dev")));
-				const scriptName = env.WORKER_NAME || (env.CF_PAGES_PROJECT_NAME || url.hostname.split(".")[0]);
+				const isPages = Boolean(env.IS_PAGES === "true" || env.CF_PAGES || env.CF_PAGES_URL || env.CF_PAGES_BRANCH || (url.hostname && url.hostname.endsWith(".pages.dev")));
+				const getCleanScriptName = () => {
+					if (env.WORKER_NAME) return env.WORKER_NAME;
+					if (env.CF_PAGES_PROJECT_NAME) return env.CF_PAGES_PROJECT_NAME;
+					const parts = (url.hostname || "").split(".");
+					if (parts.length >= 3 && parts[parts.length - 2] === "pages" && parts[parts.length - 1] === "dev") {
+						return parts[parts.length - 3];
+					}
+					return parts[0] || "";
+				};
+				const scriptName = getCleanScriptName();
 				let placement = "smart"; 
 				if (isPages) {
 					const pagesRes = await fetch(`https://api.cloudflare.com/client/v4/accounts/${currentAccountId}/pages/projects/${scriptName}`, { 
@@ -11084,7 +11164,7 @@ async function testUserSocksProxy() {
 				window.location.reload();
 			}
 		}
-const CURRENT_VERSION = '2.3.1';
+const CURRENT_VERSION = '2.3.2';
 const UPDATE_FIX = "constsCURRENT_VERSION='d.d.d'";
 		window.autoUpdateStatusCache = false;
 		async function checkAutoUpdateSetup() {
