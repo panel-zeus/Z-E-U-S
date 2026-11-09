@@ -1,4 +1,4 @@
-VERSION=2.3.2
+VERSION=2.4.1
 <div class="text-center">
     
         <div class="flex items-center justify-center gap-2 mb-4 mt-1">
@@ -8,11 +8,26 @@ VERSION=2.3.2
                 <svg class="w-3.5 h-3.5 drop-shadow-sm" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
             </div>
         </div>
-        <h3 class="font-black text-sm text-gray-900 dark:text-white leading-none mt-0.5">نسخه 2.3.2 پنل منتشر شد</h3>
+        <h3 class="font-black text-sm text-gray-900 dark:text-white leading-none mt-0.5">نسخه 2.4.1 پنل منتشر شد</h3>
     </div>
     
     <div class="space-y-1.5 mb-2.5">
-                <div class="group flex items-center gap-2 p-1.5 bg-amber-50/50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800/50 rounded-lg shadow-sm text-right cursor-default">
+        <div class="group flex items-center gap-2 p-1.5 bg-sky-50/50 dark:bg-sky-950/20 border border-sky-200 dark:border-sky-800/50 rounded-lg shadow-sm text-right cursor-default">
+            <div class="relative flex items-center justify-center w-6 h-6 rounded bg-sky-100 dark:bg-sky-900/40 text-sky-500 dark:text-sky-400 flex-shrink-0">
+                <span class="absolute -inset-1 rounded-full bg-sky-500/30 animate-ping opacity-75 group-hover:opacity-100 pointer-events-none"></span>
+                <svg class="w-3.5 h-3.5 transition-transform duration-500 group-hover:scale-110 drop-shadow-[0_0_6px_rgba(14,165,233,0.8)] relative z-10" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm4.64 6.8c-.15 1.58-.8 5.42-1.13 7.19-.14.75-.42 1-.68 1.03-.58.05-1.02-.38-1.58-.75-.88-.58-1.38-.94-2.23-1.5-.99-.65-.35-1.01.22-1.59.15-.15 2.71-2.48 2.76-2.69a.2.2 0 00-.05-.18c-.06-.05-.14-.03-.21-.02-.09.02-1.49.94-4.22 2.79-.4.27-.76.41-1.08.4-.36-.01-1.04-.2-1.55-.37-.63-.2-1.12-.31-1.08-.66.02-.18.27-.36.74-.55 2.92-1.27 4.86-2.11 5.83-2.51 2.78-1.16 3.35-1.36 3.73-1.37.08 0 .27.02.39.12.1.08.13.19.14.27-.01.06.01.24 0 .24z"/>
+                </svg>
+            </div>
+            <div>
+                <h4 class="font-black text-[10px] text-sky-950 dark:text-sky-300">پشتیبانی از پروکسی اختصاصی تلگرام</h4>
+                <p class="text-[8px] text-sky-700/80 dark:text-sky-400/80 mt-0.5 leading-tight font-bold">
+                    اتصال پرسرعت و مستقیم به تلگرام با امنیت TLS و پینگ پایین
+                </p>
+            </div>
+        </div>
+
+        <div class="group flex items-center gap-2 p-1.5 bg-amber-50/50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800/50 rounded-lg shadow-sm text-right cursor-default">
             <div class="relative flex items-center justify-center w-6 h-6 rounded bg-amber-100 dark:bg-amber-900/40 text-amber-600 dark:text-amber-400 flex-shrink-0">
                 <span class="absolute -inset-1 rounded-full bg-amber-500/30 animate-ping opacity-75 group-hover:opacity-100 pointer-events-none"></span>
                 <svg class="w-3.5 h-3.5 transition-transform duration-500 group-hover:scale-110 drop-shadow-[0_0_6px_rgba(245,158,11,0.8)] relative z-10" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24">
@@ -23,21 +38,6 @@ VERSION=2.3.2
                 <h4 class="font-black text-[10px] text-amber-900 dark:text-amber-300">قابلیت تغییر ریجن (لوکیشن) پنل</h4>
                 <p class="text-[8px] text-amber-700/80 dark:text-amber-500/80 mt-0.5 leading-tight font-bold">
                     تغییر ریجن کلودفلر و لوکیشن کانفیگ‌های مستقیم (🌐)
-                </p>
-            </div>
-        </div>
-
-                <div class="group flex items-center gap-2 p-1.5 bg-white dark:bg-amoled-input border border-gray-200 dark:border-amoled-border rounded-lg shadow-sm text-right cursor-default">
-            <div class="relative flex items-center justify-center w-6 h-6 rounded bg-indigo-50 dark:bg-indigo-900/30 text-indigo-500 flex-shrink-0">
-                <span class="absolute -inset-1 rounded-full bg-indigo-500/20 animate-ping opacity-75 group-hover:opacity-100 pointer-events-none"></span>
-                <svg class="w-3.5 h-3.5 transition-transform duration-500 group-hover:scale-110 drop-shadow-[0_0_6px_rgba(99,102,241,0.8)] relative z-10" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24">
-                    <path d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9"></path>
-                </svg>
-            </div>
-            <div>
-                <h4 class="font-black text-[10px] text-gray-800 dark:text-zinc-200">پشتیبانی از IPv6 و دامنه</h4>
-                <p class="text-[8px] text-gray-500 dark:text-zinc-400 mt-0.5 leading-tight font-medium">
-                    گسترش مخزن ایپی تمیز و اضافه شدن آیپی 6 و دامنه
                 </p>
             </div>
         </div>
@@ -188,7 +188,7 @@ VERSION=2.3.2
                 <div class="flex items-start gap-1 p-1.5 bg-orange-50 dark:bg-orange-950/30 border border-orange-200 dark:border-orange-800/60 rounded-lg shadow-sm mt-1.5">
             <svg class="w-3.5 h-3.5 flex-shrink-0 text-orange-600 dark:text-orange-500 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
             <div class="text-[8.5px] text-orange-800 dark:text-orange-400 font-bold text-justify leading-tight">
-                <span class="font-black text-orange-700 dark:text-orange-500">هشدار مهم:</span> برای اتصال بی‌نقص کانفیگ‌ها، پنل باید به نسخه <span class="bg-orange-100 dark:bg-orange-900/50 px-1 rounded font-black text-orange-700 dark:text-orange-300 mx-0.5" dir="ltr">2.3.2</span> یا جدیدتر آپدیت شده باشد.
+                <span class="font-black text-orange-700 dark:text-orange-500">هشدار مهم:</span> برای اتصال بی‌نقص کانفیگ‌ها، پنل باید به نسخه <span class="bg-orange-100 dark:bg-orange-900/50 px-1 rounded font-black text-orange-700 dark:text-orange-300 mx-0.5" dir="ltr">2.4.1</span> یا جدیدتر آپدیت شده باشد.
             </div>
         </div>
     </div>
