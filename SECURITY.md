@@ -6,8 +6,8 @@ Security updates are provided for the latest stable release of ZEUS PANEL. Older
 
 | Version | Supported          |
 | ------- | ------------------ |
-| 1.11.x  | :white_check_mark: |
-| < 1.11  | :x:                |
+| 2.4.x   | :white_check_mark: |
+| < 2.4   | :x:                |
 
 ## Compliance & Acceptable Use
 
