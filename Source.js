@@ -1626,7 +1626,7 @@ const Router = {
 			if (user.auto_rotate_ip === 1) {
 				const cachedIpsData = await getCachedIps();
 				const randomIps = getRandomIps(cachedIpsData, user.ip_operator || "all", user.ip_count || 20);
-				if (randomIps.length > 0) user.ips = randomIps.join("\n");
+				if (randomIps.length > 0) user.ips = [url.hostname, ...randomIps.filter(ip => ip !== url.hostname)].join("\n");
 			}
 			const userIpsMap = GLOBAL_ACTIVE_IPS.get(user.username);
 			const liveIpCount = userIpsMap ? userIpsMap.size : 0;
@@ -1694,7 +1694,7 @@ const Router = {
 				let flagEmoji = getFlag(cCode);
 				if (!uniqueFlags.has(flagEmoji)) {
 					uniqueFlags.add(flagEmoji);
-					flagsHtml.push('<span class="text-[34px] leading-none drop-shadow-md mx-1" dir="ltr">' + flagEmoji + '</span>');
+					flagsHtml.push('<span class="text-[34px] leading-none mx-1" dir="ltr" style="forced-color-adjust:none;color-scheme:light;isolation:isolate;">' + flagEmoji + '</span>');
 				}
 			}
 			const flagEl = document.getElementById("display-flag");
@@ -1853,8 +1853,35 @@ const Router = {
 			}
 		}
 		const authorized = await DbService.verifyApiAuth(request, env);
-		if (!authorized && url.pathname !== "/api/test-proxy") {
+		if (!authorized && url.pathname !== "/api/test-proxy" && !url.pathname.startsWith("/api/public-proxies")) {
 			return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: { "Content-Type": "application/json; charset=utf-8" }, });
+		}
+		if (url.pathname === "/api/public-proxies" && request.method === "GET") {
+			const action = url.searchParams.get("action");
+			const country = (url.searchParams.get("country") || "").toUpperCase();
+			if (action === "countries") {
+				try {
+					const mRes = await fetch("https://raw.githubusercontent.com/aradava/proxy-atlas/refs/heads/main/results/manifest.json", {
+						headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" }
+					});
+					if (mRes.ok) {
+						return new Response(await mRes.text(), { headers: { "Content-Type": "application/json; charset=utf-8" } });
+					}
+				} catch (e) { }
+				return new Response(JSON.stringify({ countries: {} }), { headers: { "Content-Type": "application/json; charset=utf-8" } });
+			}
+			if (country) {
+				try {
+					const pRes = await fetch(`https://raw.githubusercontent.com/aradava/proxy-atlas/refs/heads/main/results/countries/${country}/all.txt`, {
+						headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" }
+					});
+					if (pRes.ok) {
+						return new Response(await pRes.text(), { headers: { "Content-Type": "text/plain; charset=utf-8" } });
+					}
+				} catch (e) { }
+				return new Response("", { status: 404 });
+			}
+			return new Response("Bad Request", { status: 400 });
 		}
 		if (url.pathname === "/api/auto-update-setup" && request.method === "POST") {
 			const body = await readJsonBody(request);
@@ -2651,7 +2678,7 @@ const Router = {
 							let finalIps = user.ips;
 							if (user.auto_rotate_ip === 1) {
 								const randomIps = getRandomIps(cachedIpsData, user.ip_operator || "all", user.ip_count || 20);
-								if (randomIps.length > 0) finalIps = randomIps.join("\n");
+								if (randomIps.length > 0) finalIps = [url.hostname, ...randomIps.filter(ip => ip !== url.hostname)].join("\n");
 							}
 							const userIpsMap = GLOBAL_ACTIVE_IPS.get(user.username);
 							const liveIpCount = userIpsMap ? userIpsMap.size : 0;
@@ -2832,7 +2859,7 @@ const DbService = {
 			try {
 				const { results } = await db.prepare("PRAGMA table_info(users)").all();
 				const existingCols = new Set((results || []).map((r) => r.name));
-				const colsToAdd = [{ name: "advanced_frag", def: "TEXT DEFAULT NULL"}, { name: "cipher_suites", def: "TEXT DEFAULT NULL"}, { name: "tls_mask", def: "TEXT DEFAULT NULL"}, { name: "ech", def: "TEXT DEFAULT NULL"}, { name: "is_active", def: "INTEGER DEFAULT 1"}, { name: "last_active", def: "INTEGER"}, { name: "fingerprint", def: "TEXT DEFAULT 'chrome'"}, { name: "max_connections", def: "INTEGER"}, { name: "limit_req", def: "INTEGER"}, { name: "used_req", def: "INTEGER DEFAULT 0"}, { name: "ip_limit", def: "INTEGER DEFAULT NULL"}, { name: "active_ips", def: "TEXT DEFAULT NULL"}, { name: "block_porn", def: "INTEGER DEFAULT 0"}, { name: "block_ads", def: "INTEGER DEFAULT 0"}, { name: "frag_len", def: "TEXT DEFAULT '200-3000'"}, { name: "frag_int", def: "TEXT DEFAULT '1-2'"}, { name: "lifetime_used_gb", def: "REAL DEFAULT 0"}, { name: "user_proxy_ip", def: "TEXT DEFAULT NULL"}, { name: "user_proxy_iata", def: "TEXT DEFAULT NULL"}, { name: "user_socks5", def: "TEXT DEFAULT NULL"}, { name: "auto_reset_vol_days", def: "INTEGER DEFAULT 0"}, { name: "auto_reset_req_days", def: "INTEGER DEFAULT 0"}, { name: "last_reset_vol_time", def: "INTEGER DEFAULT 0"}, { name: "last_reset_req_time", def: "INTEGER DEFAULT 0"}, { name: "auto_rotate_ip", def: "INTEGER DEFAULT 1"}, { name: "rotate_time", def: "INTEGER DEFAULT 0"}, { name: "ip_operator", def: "TEXT DEFAULT 'all'"}, { name: "ip_count", def: "INTEGER DEFAULT 15"}, { name: "last_rotate_time", def: "INTEGER DEFAULT 0"}, { name: "auto_rotate_user_proxy", def: "INTEGER DEFAULT 0"}, { name: "start_on_first_connect", def: "INTEGER DEFAULT 0"}, { name: "first_connection_time", def: "INTEGER DEFAULT NULL"}, { name: "trojan_hash", def: "TEXT DEFAULT NULL"}, { name: "enable_direct", def: "INTEGER DEFAULT 1"}];
+				const colsToAdd = [{ name: "advanced_frag", def: "TEXT DEFAULT NULL" }, { name: "cipher_suites", def: "TEXT DEFAULT NULL" }, { name: "tls_mask", def: "TEXT DEFAULT NULL" }, { name: "ech", def: "TEXT DEFAULT NULL" }, { name: "is_active", def: "INTEGER DEFAULT 1" }, { name: "last_active", def: "INTEGER" }, { name: "fingerprint", def: "TEXT DEFAULT 'chrome'" }, { name: "max_connections", def: "INTEGER" }, { name: "limit_req", def: "INTEGER" }, { name: "used_req", def: "INTEGER DEFAULT 0" }, { name: "ip_limit", def: "INTEGER DEFAULT NULL" }, { name: "active_ips", def: "TEXT DEFAULT NULL" }, { name: "block_porn", def: "INTEGER DEFAULT 0" }, { name: "block_ads", def: "INTEGER DEFAULT 0" }, { name: "frag_len", def: "TEXT DEFAULT '200-3000'" }, { name: "frag_int", def: "TEXT DEFAULT '1-2'" }, { name: "lifetime_used_gb", def: "REAL DEFAULT 0" }, { name: "user_proxy_ip", def: "TEXT DEFAULT NULL" }, { name: "user_proxy_iata", def: "TEXT DEFAULT NULL" }, { name: "user_socks5", def: "TEXT DEFAULT NULL" }, { name: "auto_reset_vol_days", def: "INTEGER DEFAULT 0" }, { name: "auto_reset_req_days", def: "INTEGER DEFAULT 0" }, { name: "last_reset_vol_time", def: "INTEGER DEFAULT 0" }, { name: "last_reset_req_time", def: "INTEGER DEFAULT 0" }, { name: "auto_rotate_ip", def: "INTEGER DEFAULT 1" }, { name: "rotate_time", def: "INTEGER DEFAULT 0" }, { name: "ip_operator", def: "TEXT DEFAULT 'all'" }, { name: "ip_count", def: "INTEGER DEFAULT 15" }, { name: "last_rotate_time", def: "INTEGER DEFAULT 0" }, { name: "auto_rotate_user_proxy", def: "INTEGER DEFAULT 0" }, { name: "start_on_first_connect", def: "INTEGER DEFAULT 0" }, { name: "first_connection_time", def: "INTEGER DEFAULT NULL" }, { name: "trojan_hash", def: "TEXT DEFAULT NULL" }, { name: "enable_direct", def: "INTEGER DEFAULT 1" }];
 				const stmts = [];
 				for (const col of colsToAdd) {
 					if (!existingCols.has(col.name)) {
@@ -2911,7 +2938,7 @@ const SubscriptionService = {
 		if (user.auto_rotate_ip === 1) {
 			const cachedIpsData = await getCachedIps();
 			const randomIps = getRandomIps(cachedIpsData, user.ip_operator || "all", user.ip_count || 20);
-			if (randomIps.length > 0) ips = randomIps;
+			if (randomIps.length > 0) ips = [host, ...randomIps.filter(ip => ip !== host)];
 		}
 		if (ips.length === 1 && ips[0] === host && user.ips && _AI_BLOCKER.length > 0) {
 			const parsedIps = user.ips.split("\n").map((ip) => ip.trim()).filter((ip) => ip.length > 0);
@@ -3108,7 +3135,7 @@ const SubscriptionService = {
 		if (user.auto_rotate_ip === 1) {
 			const cachedIpsData = await getCachedIps();
 			const randomIps = getRandomIps(cachedIpsData, user.ip_operator || "all", user.ip_count || 20);
-			if (randomIps.length > 0) ips = randomIps;
+			if (randomIps.length > 0) ips = [host, ...randomIps.filter(ip => ip !== host)];
 		}
 		if (ips.length === 1 && ips[0] === host && user.ips) {
 			const parsedIps = user.ips.split("\n").map((ip) => ip.trim()).filter((ip) => ip.length > 0);
@@ -3450,6 +3477,66 @@ function getSelectedUserProxy(userSocks5, request) {
 	if (idx === -1) return "";
 	const selected = proxyList[idx] || proxyList[0];
 	return typeof selected === "object" ? selected.proxy || "" : String(selected || "");
+}
+function sniffTlsSni(data) {
+	if (!data || data.byteLength < 44) return null;
+	try {
+		if (data[0] !== 0x16) return null;
+		if (data[5] !== 0x01) return null;
+		let pos = 43;
+		if (pos >= data.byteLength) return null;
+		const sessionIdLen = data[pos];
+		pos += 1 + sessionIdLen;
+		if (pos + 2 > data.byteLength) return null;
+		const cipherSuitesLen = (data[pos] << 8) | data[pos + 1];
+		pos += 2 + cipherSuitesLen;
+		if (pos + 1 > data.byteLength) return null;
+		const compMethodsLen = data[pos];
+		pos += 1 + compMethodsLen;
+		if (pos + 2 > data.byteLength) return null;
+		const extensionsLen = (data[pos] << 8) | data[pos + 1];
+		pos += 2;
+		const endPos = Math.min(pos + extensionsLen, data.byteLength);
+		while (pos + 4 <= endPos) {
+			const extType = (data[pos] << 8) | data[pos + 1];
+			const extLen = (data[pos + 2] << 8) | data[pos + 3];
+			pos += 4;
+			if (extType === 0x0000 && pos + 2 <= endPos) {
+				let sniPos = pos + 2;
+				if (sniPos < endPos && data[sniPos] === 0x00) {
+					if (sniPos + 3 <= endPos) {
+						const sniLen = (data[sniPos + 1] << 8) | data[sniPos + 2];
+						if (sniPos + 3 + sniLen <= endPos && sniLen > 0) {
+							const domain = TEXT_DECODER.decode(data.subarray(sniPos + 3, sniPos + 3 + sniLen));
+							if (domain && domain.length > 0 && domain.length < 256 && !domain.includes(" ") && !domain.includes("\0")) {
+								return domain;
+							}
+						}
+					}
+				}
+				break;
+			}
+			pos += extLen;
+		}
+	} catch (e) { }
+	return null;
+}
+function sniffHttpHost(data) {
+	if (!data || data.byteLength < 14) return null;
+	try {
+		const sliceLen = Math.min(data.byteLength, 1024);
+		const text = TEXT_DECODER.decode(data.subarray(0, sliceLen));
+		if (/^(GET|POST|HEAD|PUT|DELETE|OPTIONS|CONNECT|PATCH)\s/i.test(text)) {
+			const match = text.match(/\r\n[Hh][Oo][Ss][Tt]:\s*([^\r\n:]+)/);
+			if (match && match[1]) {
+				const host = match[1].trim();
+				if (host.length > 0 && host.length < 256 && !host.includes(" ") && !host.includes("\0")) {
+					return host;
+				}
+			}
+		}
+	} catch (e) { }
+	return null;
 }
 async function handlevIees(env, storedData = null, ctx = null, request = null) {
 	let rawClientIP = request ? request.headers.get("CF-Connecting-IP") || "unknown" : "unknown";
@@ -3896,9 +3983,12 @@ async function handlevIees(env, storedData = null, ctx = null, request = null) {
 			}
 			let isIpTarget = (isTrojan && (addrType === 1 || addrType === 4)) || (!isTrojan && !isShadowsocks && (addrType === 1 || addrType === 3));
 			let isTelegramIp = isIpTarget && /^(149\.154\.|91\.108\.|185\.76\.151\.|2001:b28:f23[dcef]:|2001:67c:4e8:)/i.test(addr);
-			if (isIpTarget && port === 443 && !isTelegramIp) {
-				if (!rawData || rawData.byteLength === 0) { isHeaderParsing = false; return; }
-				if (rawData[0] === 0x16 && (rawData.byteLength < 2 || rawData[1] === 0x03)) {
+			let isFakeOrPrivateIp = isIpTarget && /^(198\.1[89]\.|127\.|10\.|192\.168\.|172\.(1[6-9]|2[0-9]|3[0-1])\.)/i.test(addr);
+			let isTlsTargetPort = TLS_PORTS.has(String(port)) || port === 443;
+			if (isIpTarget && !isTelegramIp && (isTlsTargetPort || isFakeOrPrivateIp || port === 80 || port === 8080)) {
+				if (!rawData || rawData.byteLength === 0) {
+					if (chunkBuffer.byteLength < 4096) { isHeaderParsing = false; return; }
+				} else if (rawData[0] === 0x16 && (rawData.byteLength < 2 || rawData[1] === 0x03)) {
 					if (rawData.byteLength < 6) { isHeaderParsing = false; return; }
 					if (rawData[5] === 0x01) {
 						const tlsRecordLen = (rawData[3] << 8) | rawData[4];
@@ -4018,35 +4108,12 @@ async function handlevIees(env, storedData = null, ctx = null, request = null) {
 			let isDomainAddress = (isTrojanProto && addrType === 3) || (!isTrojanProto && addrType === 2);
 			let isIpAddress = (isTrojanProto && (addrType === 1 || addrType === 4)) || (!isTrojanProto && (addrType === 1 || addrType === 3));
 			let sniffedDomain = null;
-			if (isIpAddress && port === 443 && rawData && rawData.byteLength > 43) {
-				try {
-					let pos = 43;
-					if (rawData[0] === 0x16 && rawData[5] === 0x01) {
-						const sessionIdLen = rawData[pos];
-						pos += 1 + sessionIdLen;
-						const cipherSuitesLen = (rawData[pos] << 8) | rawData[pos + 1];
-						pos += 2 + cipherSuitesLen;
-						const compMethodsLen = rawData[pos];
-						pos += 1 + compMethodsLen;
-						const extensionsLen = (rawData[pos] << 8) | rawData[pos + 1];
-						pos += 2;
-						const endPos = Math.min(pos + extensionsLen, rawData.byteLength);
-						while (pos + 4 <= endPos) {
-							const extType = (rawData[pos] << 8) | rawData[pos + 1];
-							const extLen = (rawData[pos + 2] << 8) | rawData[pos + 3];
-							pos += 4;
-							if (extType === 0x0000) {
-								let sniPos = pos + 2;
-								if (rawData[sniPos] === 0x00) {
-									let sniLen = (rawData[sniPos + 1] << 8) | rawData[sniPos + 2];
-									sniffedDomain = new TextDecoder().decode(rawData.slice(sniPos + 3, sniPos + 3 + sniLen));
-									break;
-								}
-							}
-							pos += extLen;
-						}
-					}
-				} catch (e) { }
+			if (isIpAddress && !isTelegramIp && rawData && rawData.byteLength > 0) {
+				if (rawData[0] === 0x16) {
+					sniffedDomain = sniffTlsSni(rawData);
+				} else if (port === 80 || port === 8080 || port === 8880 || /^(GET|POST|HEAD|PUT|DELETE|OPTIONS|CONNECT|PATCH)\s/i.test(TEXT_DECODER.decode(rawData.subarray(0, 10)))) {
+					sniffedDomain = sniffHttpHost(rawData);
+				}
 			}
 			let checkDomain = isDomainAddress ? addr : sniffedDomain;
 			if (isIpAddress && sniffedDomain) { addr = sniffedDomain; }
@@ -5350,7 +5417,11 @@ const COMMON_HEAD = `
 		if (activeTheme.startsWith('/*')) activeTheme = localStorage.getItem('color-theme') || 'dark';
 		if (activeTheme === 'light') {
 			document.documentElement.classList.remove('dark');
-		} else { document.documentElement.classList.add('dark'); }
+			document.documentElement.style.colorScheme = 'light';
+		} else {
+			document.documentElement.classList.add('dark');
+			document.documentElement.style.colorScheme = 'dark';
+		}
 		if (localStorage.getItem('grayscale-theme') === 'true') { document.documentElement.classList.add('grayscale-active'); }
 		try { localStorage.removeItem('proxy_flag_cache'); } catch(e) {}
 	</script>
@@ -5361,6 +5432,8 @@ const COMMON_HEAD = `
 	<link rel="icon" type="image/svg+xml" href="/icon.svg">
 	<link rel="apple-touch-icon" href="/icon.svg">
 	<meta name="theme-color" content="#000000">
+	<meta name="color-scheme" content="dark light">
+	<meta name="supported-color-schemes" content="dark light">
 	<meta name="mobile-web-app-capable" content="yes">
 	<meta name="apple-mobile-web-app-capable" content="yes">
 	<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -5851,6 +5924,10 @@ const HTML_TEMPLATES = {
 </head>
 <body class="bg-gray-50 text-gray-900 dark:bg-amoled-bg dark:text-zinc-100 min-h-screen flex flex-col items-center justify-center p-4 gap-6">
 	<div class="w-full max-w-md bg-white dark:bg-amoled-card border border-gray-200 dark:border-amoled-border rounded-md shadow-xl p-8 text-center flex flex-col items-center gap-4 relative z-10">
+		<div class="absolute top-3.5 right-3.5 flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800/50 text-[11px] font-mono font-bold text-blue-600 dark:text-blue-400 select-none shadow-sm" dir="ltr">
+			<span class="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse"></span>
+			<span>v2.4.2</span>
+		</div>
 		<div class="p-4 bg-blue-50 dark:bg-blue-900/20 text-blue-500 rounded-full mb-2">
 			<svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
 		</div>
@@ -5863,6 +5940,12 @@ const HTML_TEMPLATES = {
 		<button onclick="window.location.href='/panel'" class="mt-4 w-full py-2.5 bg-transparent border-2 border-green-600 text-green-700 hover:bg-green-900/20 hover:text-green-800 dark:border-green-500 dark:text-green-500 dark:hover:bg-green-900/40 dark:hover:text-green-400 font-medium rounded-md text-sm transition-colors duration-200 shadow-lg font-bold">
 			ورود به پـنـل
 		</button>
+		<div class="w-full pt-2">
+			<button type="button" onclick="window.location.href='/panel?recovery=1'" class="w-full py-2.5 bg-amber-50/60 hover:bg-amber-100 dark:bg-amber-950/20 dark:hover:bg-amber-900/40 border border-amber-300 dark:border-amber-700/60 text-amber-700 dark:text-amber-400 rounded-md text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-sm">
+				<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"></path></svg>
+				<span>بازیابی رمز عبور پـنـل</span>
+			</button>
+		</div>
 	</div>
 	<div class="flex flex-col gap-4 relative z-10 w-full max-w-md">
 		<div class="flex flex-wrap items-center gap-3 sm:gap-4 justify-center">
@@ -5907,6 +5990,10 @@ const HTML_TEMPLATES = {
 </head>
 <body class="bg-gray-50 text-gray-900 dark:bg-amoled-bg dark:text-zinc-100 min-h-screen flex flex-col items-center justify-center p-4 gap-6">
 	<div class="w-full max-w-md bg-white dark:bg-amoled-card border border-gray-200 dark:border-amoled-border rounded-md shadow-xl p-6 relative z-10">
+		<div class="absolute top-3.5 right-3.5 flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800/50 text-[11px] font-mono font-bold text-blue-600 dark:text-blue-400 select-none shadow-sm" dir="ltr">
+			<span class="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse"></span>
+			<span>v2.4.2</span>
+		</div>
 		<h2 class="text-xl font-bold mb-2 text-center text-blue-600 dark:text-blue-400">تنظیم رمز عبور جدید</h2>
 		<p class="text-sm text-gray-500 dark:text-gray-400 text-center mb-6">این اولین ورود شما به پـنـل مدیریت است. لطفاً رمز عبور خود را تعیین کنید.</p>
 		<form onsubmit="handleSetup(event)" class="space-y-4">
@@ -5997,6 +6084,10 @@ const HTML_TEMPLATES = {
 </head>
 <body class="bg-gray-50 text-gray-900 dark:bg-amoled-bg dark:text-zinc-100 min-h-screen flex flex-col items-center justify-center p-4 gap-6">
 	<div class="w-full max-w-md bg-white dark:bg-amoled-card border border-gray-200 dark:border-amoled-border rounded-md shadow-xl p-6 relative z-10">
+		<div class="absolute top-3.5 right-3.5 flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800/50 text-[11px] font-mono font-bold text-blue-600 dark:text-blue-400 select-none shadow-sm" dir="ltr">
+			<span class="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse"></span>
+			<span>v2.4.2</span>
+		</div>
 		<div id="login-section">
 			<h2 class="text-xl font-bold mb-6 text-center text-blue-600 dark:text-blue-400">ورود به پـنـل مدیریت</h2>
 			<form onsubmit="handleLogin(event)" class="space-y-4">
@@ -6006,8 +6097,11 @@ const HTML_TEMPLATES = {
 				</div>
 				<button type="submit" id="submit-btn" class="w-full py-2.5 bg-transparent border-2 border-green-600 text-green-700 hover:bg-green-900/20 hover:text-green-800 dark:border-green-500 dark:text-green-500 dark:hover:bg-green-900/40 dark:hover:text-green-400 font-medium rounded-md text-sm transition font-bold">ورود</button>
 			</form>
-			<div class="mt-4 text-center">
-				<button onclick="toggleRecovery(true)" class="text-xs text-blue-500 hover:text-blue-600 transition font-medium">بازیابی رمز پـنـل</button>
+			<div class="mt-4 pt-3 border-t border-gray-150 dark:border-amoled-border text-center">
+				<button type="button" onclick="toggleRecovery(true)" class="w-full py-2.5 bg-amber-50/60 hover:bg-amber-100 dark:bg-amber-950/20 dark:hover:bg-amber-900/40 border border-amber-300 dark:border-amber-700/60 text-amber-700 dark:text-amber-400 rounded-md text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-sm">
+					<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"></path></svg>
+					<span>بازیابی رمز عبور پـنـل</span>
+				</button>
 			</div>
 		</div>
 		<div id="recovery-section" class="hidden">
@@ -6089,6 +6183,9 @@ const HTML_TEMPLATES = {
 			document.getElementById('login-section').classList.toggle('hidden', show);
 			document.getElementById('recovery-section').classList.toggle('hidden', !show);
 		}
+		if (window.location.search.includes('recovery') || window.location.hash.includes('recovery')) {
+			toggleRecovery(true);
+		}
 		async function handleRecovery(event) {
 			event.preventDefault();
 			const apiToken = document.getElementById('api-token').value;
@@ -6138,7 +6235,7 @@ const HTML_TEMPLATES = {
 	${COMMON_HEAD}
 	<style>
 		body { font-family: 'Vazirmatn', sans-serif; }
-		.zeus-flag {
+		.zeus-flag, .fi {
 			display: inline-block;
 			width: 1.35em;
 			height: 1em;
@@ -6147,20 +6244,79 @@ const HTML_TEMPLATES = {
 			background-size: cover;
 			background-position: 50%;
 			background-repeat: no-repeat;
+			forced-color-adjust: none !important;
+			color-scheme: light !important;
+			isolation: isolate;
+			filter: none !important;
+			-webkit-filter: none !important;
 		}
 		.zeus-flag-globe {
 			font-size: 1.1em;
 			line-height: 1;
 			vertical-align: -0.05em;
+			forced-color-adjust: none !important;
+			color-scheme: light !important;
+			filter: none !important;
+		}
+		[class*="fi-"], .zeus-flag, .rocket-country-btn span:first-child {
+			forced-color-adjust: none !important;
+			color-scheme: light !important;
+			isolation: isolate;
+			filter: none !important;
+			-webkit-filter: none !important;
 		}
 		html.grayscale-active {
 			filter: grayscale(100%);
 		}
-		input[type="checkbox"] {
-			accent-color: #16a34a;
+		html:not(.dark) {
+			color-scheme: light !important;
 		}
-		.dark input[type="checkbox"] {
+		html.dark {
+			color-scheme: dark !important;
+		}
+		html:not(.dark) input,
+		html:not(.dark) select,
+		html:not(.dark) textarea {
+			color-scheme: light !important;
+		}
+		html.dark input,
+		html.dark select,
+		html.dark textarea {
+			color-scheme: dark !important;
+		}
+		input[type="checkbox"] {
+			accent-color: #16a34a !important;
+			cursor: pointer;
+		}
+		html:not(.dark) input[type="checkbox"] {
+			color-scheme: light !important;
+			background-color: #ffffff !important;
+			border-color: #cbd5e1 !important;
+			accent-color: #16a34a !important;
+		}
+		html.dark input[type="checkbox"], .dark input[type="checkbox"] {
+			color-scheme: dark !important;
+			background-color: #18181b !important;
+			border-color: #3f3f46 !important;
+			accent-color: #16a34a !important;
 			filter: none;
+		}
+		#select-all-users,
+		input[name="select-user"] {
+			accent-color: #16a34a !important;
+			cursor: pointer;
+		}
+		html:not(.dark) #select-all-users,
+		html:not(.dark) input[name="select-user"] {
+			color-scheme: light !important;
+			background-color: #ffffff !important;
+			border-color: #cbd5e1 !important;
+		}
+		html.dark #select-all-users,
+		html.dark input[name="select-user"] {
+			color-scheme: dark !important;
+			background-color: #18181b !important;
+			border-color: #3f3f46 !important;
 		}
 		::-webkit-scrollbar {
 			width: 6px;
@@ -6332,6 +6488,9 @@ const HTML_TEMPLATES = {
 			</div>
 		</div>
 	</header>
+	<div id="panel-ads-banner" class="hidden w-[95%] sm:w-[92%] md:w-[90%] mx-auto -mt-[1px] relative z-20 transition-all duration-300">
+		<div id="panel-ads-content" class="w-full flex items-center justify-center"></div>
+	</div>
 	<main class="max-w-6xl mx-auto px-4 py-8 pb-56 md:pb-32 relative z-10">
 <div class="bg-gray-50/70 dark:bg-amoled-input/30 border border-gray-300 dark:border-amoled-border rounded-xl mb-6 shadow-sm flex flex-col overflow-hidden">
 	<button onclick="const w = document.getElementById('stats-accordion-wrapper'); const i = document.getElementById('stats-accordion-icon'); w.classList.toggle('max-h-0'); w.classList.toggle('opacity-0'); w.classList.toggle('max-h-[500px]'); w.classList.toggle('opacity-100'); i.classList.toggle('rotate-180'); localStorage.setItem('zeus_stats_hidden', w.classList.contains('max-h-0'));" class="w-full flex items-center justify-between text-xs font-bold cursor-pointer outline-none focus:outline-none focus:ring-0 [-webkit-tap-highlight-color:transparent] px-4 py-2 hover:bg-gray-100/50 dark:hover:bg-zinc-800/30 transition-all duration-300 relative z-20">
@@ -7633,7 +7792,7 @@ const HTML_TEMPLATES = {
 					پـروکـسـی های عمومی
 				</h4>
 				<p class="text-[10px] text-gray-500 dark:text-zinc-500 mb-3 leading-relaxed font-medium">
-					جستجو در منابع رایگان؛ به دلیل نیاز به تست کیفیت زمان‌بر است.
+					برگرفته از مخزن عمومی و آزاد پروژه Proxy Atlas (همراه با اسکن خودکار کیفیت و اتصال).
 				</p>
 				<div id="proxy-loading-state" class="text-center text-[11px] text-blue-500 font-bold hidden my-3 whitespace-pre-line leading-relaxed">
 					در حال اسکن...
@@ -7645,6 +7804,15 @@ const HTML_TEMPLATES = {
 					<button type="button" onclick="fetchAndLoadProxy()" id="proxy-fetch-btn" class="w-full py-2.5 bg-transparent border-2 border-blue-600 text-blue-700 hover:bg-blue-900/20 hover:text-blue-800 dark:border-blue-500 dark:text-blue-500 dark:hover:bg-blue-900/40 dark:hover:text-blue-400 font-bold rounded-md text-xs transition shadow-sm disabled:opacity-50 disabled:cursor-not-allowed" disabled>
 						شروع اسکن و یافتن پـروکـسـی
 					</button>
+				</div>
+				<div class="mt-3 pt-2.5 border-t border-gray-200 dark:border-amoled-border flex flex-wrap sm:flex-nowrap items-center justify-between gap-2 text-xs">
+					<a href="https://github.com/aradava/proxy-atlas" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg text-[11px] font-bold text-gray-700 dark:text-zinc-300 bg-gray-100 hover:bg-gray-200 dark:bg-amoled-input dark:hover:bg-zinc-800 border border-gray-200 dark:border-amoled-border transition shadow-sm cursor-pointer whitespace-nowrap">
+						<svg class="w-3.5 h-3.5 fill-current" viewBox="0 0 24 24"><path fill-rule="evenodd" clip-rule="evenodd" d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.53 1.032 1.53 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z"/></svg>
+						<span>گیت‌هاب پروژه</span>
+					</a>
+					<span class="w-full sm:w-auto text-[10px] text-gray-500 dark:text-zinc-400 font-medium text-center sm:text-right">
+						با تشکر از سازنده پروژه <a href="https://github.com/aradava" target="_blank" rel="noopener noreferrer" class="font-bold text-blue-500 hover:text-blue-600 transition">aradava</a>
+					</span>
 				</div>
 			</div>
 			<div class="pt-1">
@@ -8787,6 +8955,10 @@ ${COMMON_TOAST_HTML}
 				let sDoms = pickRandom(domList, actualDomCount);
 				let mixed = [...sIps, ...sDoms];
 				let selectedIps = pickRandom(mixed, mixed.length);
+				const panelHost = window.location.hostname;
+				if (panelHost && !selectedIps.includes(panelHost)) {
+					selectedIps.unshift(panelHost);
+				}
 				const ipsStr = selectedIps.join('\\n');
 				const tlsPick = tlsPorts[Math.floor(Math.random() * tlsPorts.length)];
 				const nonTlsPick = nonTlsPorts[Math.floor(Math.random() * nonTlsPorts.length)];
@@ -8931,6 +9103,10 @@ ${COMMON_TOAST_HTML}
 				let sDoms = pickRandom(domList, actualDomCount);
 				let mixed = [...sIps, ...sDoms];
 				let selectedIps = pickRandom(mixed, mixed.length);
+				const panelHost = window.location.hostname;
+				if (panelHost && !selectedIps.includes(panelHost)) {
+					selectedIps.unshift(panelHost);
+				}
 				const ipsStr = selectedIps.join('\\n');
 				const response = await fetch('/api/users', {
 					method: 'POST',
@@ -9479,7 +9655,7 @@ async function openRocketModal(btn) {
 				hiddenInput.value = country;
 				submitBtn.disabled = false;
 			};
-			btnObj.innerHTML = '<span class="text-xl drop-shadow-sm leading-none flex items-center justify-center">' + flag + '</span><span class="text-[9px] font-black text-gray-700 dark:text-zinc-300 uppercase">' + country + '</span>';
+			btnObj.innerHTML = '<span class="text-xl leading-none flex items-center justify-center pointer-events-none" style="forced-color-adjust:none;color-scheme:light;isolation:isolate;">' + flag + '</span><span class="text-[9px] font-black text-gray-700 dark:text-zinc-300 uppercase">' + country + '</span>';
 			grid.appendChild(btnObj);
 		});
 	} else { grid.innerHTML = '<div class="col-span-full text-center text-[11px] font-bold text-red-500 py-4">پـروکـسـی اختصاصی موجود نیست</div>'; }
@@ -9542,6 +9718,10 @@ async function executeRocketCreate() {
 		let sDoms = pickRandom(domList, actualDomCount);
 		let mixed = [...sIps, ...sDoms];
 		let selectedIps = pickRandom(mixed, mixed.length);
+		const panelHost = window.location.hostname;
+		if (panelHost && !selectedIps.includes(panelHost)) {
+			selectedIps.unshift(panelHost);
+		}
 		const ipsStr = selectedIps.join('\\n');
 		const finalSocks5 = JSON.stringify([{ proxy: bestProxy, country: country }]);
 		const response = await fetch('/api/users', {
@@ -9641,8 +9821,12 @@ async function executeRocketCreate() {
 			let newTheme = 'dark';
 			if (document.documentElement.classList.contains('dark')) {
 				document.documentElement.classList.remove('dark');
+				document.documentElement.style.colorScheme = 'light';
 				newTheme = 'light';
-			} else { document.documentElement.classList.add('dark'); }
+			} else {
+				document.documentElement.classList.add('dark');
+				document.documentElement.style.colorScheme = 'dark';
+			}
 			localStorage.setItem('color-theme', newTheme);
 			try {
 				await fetch('/api/settings/bulk', {
@@ -10769,7 +10953,7 @@ window.renderProxyFieldsUI = function() {
 								'<span>پروکسی VIP (' + displayCountry + ')</span>' +
 							'</div>' +
 							'<div class="flex items-center gap-2">' +
-								'<span class="text-base leading-none drop-shadow-sm">' + flagHtml + '</span>' +
+								'<span class="text-base leading-none" style="forced-color-adjust:none;color-scheme:light;isolation:isolate;">' + flagHtml + '</span>' +
 								'<button type="button" onclick="event.stopPropagation(); window.clearProxyFieldUI(' + idx + ')" title="حذف و تغییر به پروکسی دستی" class="text-green-600/60 hover:text-red-500 transition-colors z-10 relative"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg></button>' +
 							'</div>' +
 						'</div>';
@@ -11067,6 +11251,41 @@ function downloadZeusSource() {
 			} else { checkLoopWarning(); }
 		} catch (err) {}
 	}
+	async function loadPanelAds() {
+		const banner = document.getElementById('panel-ads-banner');
+		const content = document.getElementById('panel-ads-content');
+		if (!banner || !content) return;
+		try {
+			const isMobile = window.innerWidth < 768;
+			const primaryFile = isMobile ? 'ads_mobile.html' : 'ads_desktop.html';
+			let res = await fetchWithFallbackUI(primaryFile + '?t=' + Date.now());
+			if (!res || !res.ok) {
+				res = await fetchWithFallbackUI('ads.html?t=' + Date.now());
+			}
+			if (res && res.ok) {
+				const html = await res.text();
+				const trimmed = html.trim();
+				if (trimmed.length > 0 && !trimmed.startsWith('<!DOCTYPE') && !trimmed.toLowerCase().includes('<title>404')) {
+					content.innerHTML = trimmed;
+					banner.classList.remove('hidden');
+					return;
+				}
+			}
+			banner.classList.add('hidden');
+			content.innerHTML = '';
+		} catch (err) {
+			banner.classList.add('hidden');
+			content.innerHTML = '';
+		}
+	}
+	let lastAdsIsMobile = window.innerWidth < 768;
+	window.addEventListener('resize', () => {
+		const currentIsMobile = window.innerWidth < 768;
+		if (currentIsMobile !== lastAdsIsMobile) {
+			lastAdsIsMobile = currentIsMobile;
+			loadPanelAds();
+		}
+	});
 		function getSubLink(username) { return window.location.origin + '/feed/' + encodeURIComponent(username); }
 		function getYamlSubLink(username) { return window.location.origin + '/yaml/' + encodeURIComponent(username); }
 		function getStatusLink(username) { return window.location.origin + '/status/' + encodeURIComponent(username); }
@@ -12306,6 +12525,10 @@ if (selectedItems.length === 0) { alert('موردی در مخزن انتخاب �
 			setInterval(() => {
 				if (!document.hidden) checkGlobalMessage();
 			}, 60000);
+			setTimeout(() => loadPanelAds(), 1500);
+			setInterval(() => {
+				if (!document.hidden) loadPanelAds();
+			}, 300000);
 			setTimeout(runGlobalProxyScanner, 10000);
 			window.addEventListener('mousedown', (e) => {
 				window._modalMouseDownTarget = e.target;
@@ -12409,134 +12632,254 @@ function toggleProxySelectorModal(show) { setModalState('proxy-selector-modal', 
 			btn.disabled = false;
 			btn.innerText = 'دریافت';
 		}
-		async function openProxySelectorModal() {
-			toggleProxySelectorModal(true);
+		let cachedAtlasCountries = null;
+		const ATLAS_FALLBACK_COUNTRIES = ["AE","AL","AM","AR","AT","AU","AZ","BD","BE","BG","BI","BO","BR","BW","CA","CH","CL","CM","CN","CO","CY","CZ","DE","DK","DO","EC","EE","EG","ES","FR","GB","GH","GT","HK","HN","HR","HU","ID","IE","IL","IN","IQ","IR","IS","IT","JP","KE","KH","KR","LT","LU","LY","ME","MM","MX","MY","MZ","NG","NL","NO","NP","PH","PK","PL","PS","PY","RO","RS","RU","SA","SE","SG","SN","SY","TH","TR","TW","UA","UG","US","UY","UZ","VE","VN","ZA","ZW"];
+
+		function renderAtlasCountryOptions(countriesData) {
 			const select = document.getElementById('proxy-country-select');
-			const fetchBtn = document.getElementById('proxy-fetch-btn');
-			const countriesList = ["AA", "AD", "AE", "AF", "AG", "AI", "AL", "AM", "AO", "AQ", "AR", "AS", "AT", "AU", "AW", "AX", "AZ", "BA", "BB", "BD", "BE", "BF", "BG", "BH", "BI", "BJ", "BL", "BM", "BN", "BO", "BQ", "BR", "BS", "BT", "BV", "BW", "BY", "BZ", "CA", "CC", "CD", "CF", "CG", "CH", "CI", "CK", "CL", "CM", "CN", "CO", "CR", "CU", "CV", "CW", "CX", "CY", "CZ", "DE", "DJ", "DK", "DM", "DO", "DZ", "EC", "EE", "EG", "EH", "ER", "ES", "ET", "FI", "FJ", "FK", "FM", "FO", "FR", "GA", "GB", "GD", "GE", "GF", "GG", "GH", "GI", "GL", "GM", "GN", "GP", "GQ", "GR", "GS", "GT", "GU", "GW", "GY", "HK", "HM", "HN", "HR", "HT", "HU", "ID", "IE", "IL", "IM", "IN", "IO", "IQ", "IR", "IS", "IT", "JE", "JM", "JO", "JP", "KE", "KG", "KH", "KI", "KM", "KN", "KP", "KR", "KW", "KY", "KZ", "LA", "LB", "LC", "LI", "LK", "LR", "LS", "LT", "LU", "LV", "LY", "MA", "MC", "MD", "ME", "MF", "MG", "MH", "MK", "ML", "MM", "MN", "MO", "MP", "MQ", "MR", "MS", "MT", "MU", "MV", "MW", "MX", "MY", "MZ", "NA", "NC", "NE", "NF", "NG", "NI", "NL", "NO", "NP", "NR", "NU", "NZ", "OM", "PA", "PE", "PF", "PG", "PH", "PK", "PL", "PM", "PN", "PR", "PS", "PT", "PW", "PY", "QA", "RE", "RO", "RS", "RU", "RW", "SA", "SB", "SC", "SD", "SE", "SG", "SH", "SI", "SJ", "SK", "SL", "SM", "SN", "SO", "SR", "SS", "ST", "SV", "SX", "SY", "SZ", "TC", "TD", "TF", "TG", "TH", "TJ", "TK", "TL", "TM", "TN", "TO", "TR", "TT", "TV", "TW", "TZ", "UA", "UG", "UM", "US", "UY", "UZ", "VA", "VC", "VE", "VG", "VI", "VN", "VU", "WF", "WS", "YE", "YT", "ZA", "ZM", "ZW"];
-			select.innerHTML = '';
-			countriesList.forEach(function(country) {
+			if (!select) return;
+			select.innerHTML = '<option value="">یک کشور عمومی انتخاب کنید...</option>';
+			const isObj = countriesData && !Array.isArray(countriesData) && typeof countriesData === 'object';
+			const countryKeys = isObj ? Object.keys(countriesData) : (countriesData || []);
+			countryKeys.sort(function(a, b) { return a.localeCompare(b); });
+			countryKeys.forEach(function(country) {
 				const option = document.createElement('option');
 				option.value = country;
 				const flag = typeof getFlagEmojiText === 'function' ? getFlagEmojiText(country) : '🌐';
-				option.textContent = flag + ' ' + country;
+				const countText = (isObj && countriesData[country] !== undefined) ? ' (' + countriesData[country] + ')' : '';
+				option.textContent = flag + ' ' + country + countText;
 				select.appendChild(option);
 			});
-			fetchBtn.disabled = false;
+		}
+
+		async function loadPublicAtlasCountries() {
+			const select = document.getElementById('proxy-country-select');
+			const fetchBtn = document.getElementById('proxy-fetch-btn');
+			if (cachedAtlasCountries) {
+				renderAtlasCountryOptions(cachedAtlasCountries);
+				if (fetchBtn) fetchBtn.disabled = false;
+				return;
+			}
+			try {
+				const saved = localStorage.getItem('zeus_atlas_countries_cache');
+				if (saved) {
+					const parsed = JSON.parse(saved);
+					if (parsed && parsed.countries && (Date.now() - parsed.timestamp < 21600000)) {
+						cachedAtlasCountries = parsed.countries;
+						renderAtlasCountryOptions(cachedAtlasCountries);
+						if (fetchBtn) fetchBtn.disabled = false;
+						return;
+					}
+				}
+			} catch(e) {}
+
+			if (select) select.innerHTML = '<option value="">در حال دریافت لیست کشورهای فعال...</option>';
+			if (fetchBtn) fetchBtn.disabled = true;
+
+			let loadedData = null;
+			try {
+				const controller = new AbortController();
+				const timeoutId = setTimeout(function() { controller.abort(); }, 5000);
+				const res = await fetch('/api/public-proxies?action=countries', { signal: controller.signal });
+				clearTimeout(timeoutId);
+				if (res.ok) {
+					const data = await res.json();
+					if (data && data.countries && Object.keys(data.countries).length > 0) {
+						loadedData = data.countries;
+					}
+				}
+			} catch(e) {}
+
+			if (!loadedData) {
+				const manifestUrls = [
+					'https://cdn.jsdelivr.net/gh/aradava/proxy-atlas@main/results/manifest.json',
+					'https://raw.githubusercontent.com/aradava/proxy-atlas/refs/heads/main/results/manifest.json'
+				];
+				try {
+					const controller = new AbortController();
+					const timeoutId = setTimeout(function() { controller.abort(); }, 5000);
+					const res = await Promise.any(manifestUrls.map(function(url) {
+						return fetch(url, { signal: controller.signal }).then(function(r) {
+							if (!r.ok) throw new Error();
+							return r.json();
+						});
+					}));
+					clearTimeout(timeoutId);
+					if (res && res.countries && Object.keys(res.countries).length > 0) {
+						loadedData = res.countries;
+					}
+				} catch(e) {}
+			}
+
+			if (loadedData) {
+				cachedAtlasCountries = loadedData;
+				try {
+					localStorage.setItem('zeus_atlas_countries_cache', JSON.stringify({
+						timestamp: Date.now(),
+						countries: loadedData
+					}));
+				} catch(e) {}
+			} else {
+				cachedAtlasCountries = ATLAS_FALLBACK_COUNTRIES;
+			}
+
+			renderAtlasCountryOptions(cachedAtlasCountries);
+			if (fetchBtn) fetchBtn.disabled = false;
+		}
+
+		async function openProxySelectorModal() {
+			toggleProxySelectorModal(true);
+			loadPublicAtlasCountries();
 			loadVipCountries();
 		}
+
 async function fetchAndLoadProxy() {
-	const select = document.getElementById("proxy-country-select");
-	const country = select.value;
+	const select = document.getElementById('proxy-country-select');
+	const country = select ? select.value : '';
 	if (!country) return;
-	const loadingState = document.getElementById("proxy-loading-state");
-	const formState = document.getElementById("proxy-selection-form");
-	const fetchBtn = document.getElementById("proxy-fetch-btn");
-	loadingState.classList.remove("hidden");
-	loadingState.innerText = "در حال دریافت لیست پـروکـسـی‌ها...";
-	formState.classList.add("hidden");
-	fetchBtn.disabled = true;
+	const loadingState = document.getElementById('proxy-loading-state');
+	const formState = document.getElementById('proxy-selection-form');
+	const fetchBtn = document.getElementById('proxy-fetch-btn');
+	if (loadingState) {
+		loadingState.classList.remove('hidden');
+		loadingState.innerText = 'در حال دریافت لیست پـروکـسـی‌ها...';
+	}
+	if (formState) formState.classList.add('hidden');
+	if (fetchBtn) fetchBtn.disabled = true;
 	try {
-		const sources = [
-			{ url: "proxy/" + country.toUpperCase() + ".txt", prefix: "" }
-		];
-		const responses = await Promise.allSettled(sources.map(src => 
-			fetchWithFallbackUI(src.url).then(async res => {
-				if (!res.ok) throw new Error();
-				const text = await res.text();
-				return { text: text, prefix: src.prefix };
-			})
-		));
+		const cUpper = country.toUpperCase();
+		let rawText = '';
+		try {
+			const controller = new AbortController();
+			const timeoutId = setTimeout(function() { controller.abort(); }, 8000);
+			const workerRes = await fetch('/api/public-proxies?country=' + encodeURIComponent(cUpper), { signal: controller.signal });
+			clearTimeout(timeoutId);
+			if (workerRes.ok) {
+				rawText = await workerRes.text();
+			}
+		} catch(e) {}
+
+		if (!rawText || rawText.length < 5) {
+			const fallbackUrls = [
+				'https://cdn.jsdelivr.net/gh/aradava/proxy-atlas@main/results/countries/' + cUpper + '/all.txt',
+				'https://raw.githubusercontent.com/aradava/proxy-atlas/refs/heads/main/results/countries/' + cUpper + '/all.txt'
+			];
+			try {
+				const controller = new AbortController();
+				const timeoutId = setTimeout(function() { controller.abort(); }, 7000);
+				rawText = await Promise.any(fallbackUrls.map(function(u) {
+					return fetch(u, { signal: controller.signal }).then(function(r) {
+						if (!r.ok) throw new Error();
+						return r.text();
+					});
+				}));
+				clearTimeout(timeoutId);
+			} catch(e) {}
+		}
+
+		if (!rawText || rawText.trim().length < 5) {
+			alert('لیست پـروکـسـی برای کشور ' + cUpper + ' دریافت نشد یا این کشور پـروکـسـی ندارد.');
+			return;
+		}
+
+		const rawLines = rawText.split('\\n');
 		let combinedProxies = [];
-		for (const res of responses) {
-			if (res.status === "fulfilled" && res.value && res.value.text) {
-				const rawLines = res.value.text.split("\\n");
-				for (let line of rawLines) {
-					line = line.trim();
-					if (line.length > 5) { combinedProxies.push(line); }
-				}
+		for (let line of rawLines) {
+			line = line.trim();
+			if (line.length > 5 && !line.startsWith('#')) {
+				if (line.toLowerCase().startsWith('socks5h://')) { line = 'socks5://' + line.slice(10); }
+				if (line.toLowerCase().startsWith('socks4a://')) { line = 'socks4://' + line.slice(10); }
+				combinedProxies.push(line);
 			}
 		}
-		let lines = [...new Set(combinedProxies.map(l => {
-			if (l.match(new RegExp("^(socks4|socks5|socks|http|https|tg)://", "i")) || l.includes("t.me/socks")) { return l; }
-			return "socks5://" + l;
+
+		let lines = [...new Set(combinedProxies.map(function(l) {
+			if (l.match(new RegExp('^(socks4|socks5|socks|http|https|tg)://', 'i')) || l.includes('t.me/socks')) { return l; }
+			return 'socks5://' + l;
 		}))];
-		if (lines.length > 0) {
-			for (let i = lines.length - 1; i > 0; i--) {
-				const j = Math.floor(Math.random() * (i + 1));
-				[lines[i], lines[j]] = [lines[j], lines[i]];
+
+		if (lines.length === 0) {
+			alert('هیچ پـروکـسـی معتبری برای کشور ' + cUpper + ' یافت نشد.');
+			return;
+		}
+
+		const socksList = [];
+		const otherList = [];
+		lines.forEach(function(p) {
+			if (p.toLowerCase().startsWith('socks')) socksList.push(p);
+			else otherList.push(p);
+		});
+		for (let i = socksList.length - 1; i > 0; i--) {
+			const j = Math.floor(Math.random() * (i + 1));
+			[socksList[i], socksList[j]] = [socksList[j], socksList[i]];
+		}
+		for (let i = otherList.length - 1; i > 0; i--) {
+			const j = Math.floor(Math.random() * (i + 1));
+			[otherList[i], otherList[j]] = [otherList[j], otherList[i]];
+		}
+		const prioritizedLines = socksList.concat(otherList);
+		const testCandidates = prioritizedLines.slice(0, 36);
+		let bestProxy = null;
+		let bestPing = 999;
+		const BATCH_SIZE = 4;
+		for (let i = 0; i < testCandidates.length; i += BATCH_SIZE) {
+			const batch = testCandidates.slice(i, i + BATCH_SIZE);
+			if (loadingState) {
+				loadingState.innerText = 'تعداد ' + lines.length + ' پـروکـسـی یافت شد. درحال اسکن...\\nبررسی گروه ' + (Math.floor(i / BATCH_SIZE) + 1) + ' از ' + Math.ceil(testCandidates.length / BATCH_SIZE);
 			}
-			let bestProxy = null;
-			let fallbackProxy = null;
-			const BATCH_SIZE = 5;
-			for (let i = 0; i < lines.length; i += BATCH_SIZE) {
-				const batch = lines.slice(i, i + BATCH_SIZE);
-				loadingState.innerText = "تعداد " + lines.length + " پـروکـسـی پیدا شد درحال اسکن\\nاسکن گروه " + (Math.floor(i / BATCH_SIZE) + 1) + " (۵ تست برای هر کدام)...";
-				const testResults = await Promise.allSettled(batch.map(async (candidate) => {
-					let successCount = 0;
-					let totalPing = 0;
-					let failCount = 0;
-					for(let t = 0; t < 5; t++) {
-						const controller = new AbortController();
-						const timeoutId = setTimeout(() => controller.abort(), 3500);
-						try {
-							const testRes = await fetch("/api/test-proxy", {
-								method: "POST",
-								headers: { "Content-Type": "application/json" },
-								body: JSON.stringify({ proxy: candidate }),
-								signal: controller.signal
-							});
-							clearTimeout(timeoutId);
-							const testData = await testRes.json();
-							if (testRes.ok && testData.success) {
-								successCount++;
-								totalPing += testData.ping;
-							} else { failCount++; }
-						} catch (err) {
-							clearTimeout(timeoutId);
-							failCount++;
-						}
-						if (failCount > 2) break;
-					}
-					if (successCount > 0) {
-						return { proxy: candidate, successCount: successCount, avgPing: totalPing / successCount };
-					}
-					throw new Error();
-				}));
-				const successfulProxies = testResults
-					.filter(r => r.status === "fulfilled")
-					.map(r => r.value)
-					.sort((a, b) => {
-						if (b.successCount !== a.successCount) { return b.successCount - a.successCount; }
-						return a.avgPing - b.avgPing;
+			const testResults = await Promise.allSettled(batch.map(async function(candidate) {
+				const controller = new AbortController();
+				const timeoutId = setTimeout(function() { controller.abort(); }, 5000);
+				try {
+					const testRes = await fetch('/api/test-proxy', {
+						method: 'POST',
+						headers: { 'Content-Type': 'application/json' },
+						body: JSON.stringify({ proxy: candidate }),
+						signal: controller.signal
 					});
-				if (successfulProxies.length > 0) {
-					const topCandidate = successfulProxies[0];
-					if (topCandidate.successCount >= 3) {
-						bestProxy = topCandidate.proxy;
-						break;
-					} else if (!fallbackProxy || topCandidate.successCount > fallbackProxy.successCount) { fallbackProxy = topCandidate; }
+					clearTimeout(timeoutId);
+					if (testRes.ok) {
+						const testData = await testRes.json();
+						if (testData.success) {
+							return { proxy: candidate, ping: testData.ping || 999 };
+						}
+					}
+				} catch (err) {
+					clearTimeout(timeoutId);
 				}
+				throw new Error('fail');
+			}));
+			const successfulProxies = testResults
+				.filter(function(r) { return r.status === 'fulfilled'; })
+				.map(function(r) { return r.value; })
+				.sort(function(a, b) { return a.ping - b.ping; });
+			if (successfulProxies.length > 0) {
+				bestProxy = successfulProxies[0].proxy;
+				bestPing = successfulProxies[0].ping;
+				break;
 			}
-			if (!bestProxy && fallbackProxy) { bestProxy = fallbackProxy.proxy; }
-			if (bestProxy) {
-				window.proxyFieldsData[window.activeProxyIndex || 0] = bestProxy;
-				if (typeof window.renderProxyFieldsUI === 'function') window.renderProxyFieldsUI();
-				const userProxyResult = document.getElementById("test-user-proxy-result");
-				if (userProxyResult) { userProxyResult.innerText = ""; }
-				toggleProxySelectorModal(false);
-				showToast("پـروکـسـی با بهترین امتیاز لود شد.");
-				testUserSocksProxy();
-			} else { alert("هیچ پـروکـسـی سالمی (حتی با یک پینگ موفق) یافت نشد."); }
-		} else { alert("پـروکـسـی برای این کشور یافت نشد."); }
+		}
+		if (bestProxy) {
+			window.proxyFieldsData[window.activeProxyIndex || 0] = bestProxy;
+			if (typeof window.renderProxyFieldsUI === 'function') window.renderProxyFieldsUI();
+			const userProxyResult = document.getElementById('test-user-proxy-result');
+			if (userProxyResult) { userProxyResult.innerText = ''; }
+			toggleProxySelectorModal(false);
+			showToast('✅ اولین پـروکـسـی سالم با پینگ ' + bestPing + 'ms اعمال شد.');
+			testUserSocksProxy();
+		} else {
+			alert('هیچ پـروکـسـی سالمی که بتواند با تمام تارگت‌ها ارتباط برقرار کند یافت نشد.');
+		}
 	} catch (e) {
-		alert("خطا در دریافت لیست پـروکـسـی‌ها از سرور.");
+		console.error('Proxy fetch/scan error:', e);
+		alert('خطا در دریافت لیست پـروکـسـی‌ها از سرور: ' + (e && e.message ? e.message : 'نامشخص'));
 	} finally {
-		loadingState.classList.add("hidden");
-		formState.classList.remove("hidden");
-		fetchBtn.disabled = false;
+		if (loadingState) loadingState.classList.add('hidden');
+		if (formState) formState.classList.remove('hidden');
+		if (fetchBtn) fetchBtn.disabled = false;
 	}
 }
+
 const WORKER_DONATE_URL = "https://si-491177.taile4bcbb.ts.net/donate";
 		function toggleDonateModal(show) {
 			setModalState('donate-modal', show);
@@ -12718,7 +13061,7 @@ const WORKER_DONATE_URL = "https://si-491177.taile4bcbb.ts.net/donate";
 			border: 1px solid rgba(255, 255, 255, 0.05);
 			box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
 		}
-		.zeus-flag {
+		.zeus-flag, .fi {
 			display: inline-block;
 			width: 1.35em;
 			height: 1em;
@@ -12727,11 +13070,26 @@ const WORKER_DONATE_URL = "https://si-491177.taile4bcbb.ts.net/donate";
 			background-size: cover;
 			background-position: 50%;
 			background-repeat: no-repeat;
+			forced-color-adjust: none !important;
+			color-scheme: light !important;
+			isolation: isolate;
+			filter: none !important;
+			-webkit-filter: none !important;
 		}
 		.zeus-flag-globe {
 			font-size: 1.1em;
 			line-height: 1;
 			vertical-align: -0.05em;
+			forced-color-adjust: none !important;
+			color-scheme: light !important;
+			filter: none !important;
+		}
+		[class*="fi-"], .zeus-flag {
+			forced-color-adjust: none !important;
+			color-scheme: light !important;
+			isolation: isolate;
+			filter: none !important;
+			-webkit-filter: none !important;
 		}
 	</style>
 </head>
