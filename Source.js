@@ -420,7 +420,7 @@ function obfuscateSourceForUpdate(sourceCode) {
 	const fixRegex = new RegExp("(?:const|let|var)\\s+UPDATE_" + "FIX\\s*=\\s*(['\"])([^'\"]+)\\1");
 	const verMatch = code.match(verRegex);
 	const fixMatch = code.match(fixRegex);
-	const versionStr = verMatch ? verMatch[2] : "2.4.1";
+	const versionStr = verMatch ? verMatch[2] : "2.4.2";
 	const updateFixStr = fixMatch ? fixMatch[2] : "constsCURRENT_VERSION='d.d.d'";
 	const xorKey1 = 198;
 	const xorKey2 = 124;
@@ -2938,7 +2938,7 @@ const SubscriptionService = {
 		if (user.auto_rotate_ip === 1) {
 			const cachedIpsData = await getCachedIps();
 			const randomIps = getRandomIps(cachedIpsData, user.ip_operator || "all", user.ip_count || 20);
-			if (randomIps.length > 0) ips = [host, ...randomIps.filter(ip => ip !== host)];
+			if (randomIps.length > 0) ips = randomIps;
 		}
 		if (ips.length === 1 && ips[0] === host && user.ips && _AI_BLOCKER.length > 0) {
 			const parsedIps = user.ips.split("\n").map((ip) => ip.trim()).filter((ip) => ip.length > 0);
@@ -2967,7 +2967,9 @@ const SubscriptionService = {
 					const expiryDate = new Date(user.first_connection_time + user.expiry_days * 86400000);
 					const diffDays = Math.ceil((expiryDate.getTime() - Date.now()) / 86400000);
 					remTime = diffDays > 0 ? diffDays + "Days" : "0Days";
-				} else { remTime = user.expiry_days + "Days (Not Started)"; }
+				} else {
+					remTime = user.expiry_days + "Days (Not Started)";
+				}
 			} else if (user.created_at) {
 				const created = new Date(user.created_at);
 				const expiryDate = new Date(created.getTime() + user.expiry_days * 86400000);
@@ -2990,7 +2992,9 @@ const SubscriptionService = {
 				proxyList = JSON.parse(user.user_socks5);
 			} else if (user.user_socks5 || user.user_proxy_ip) {
 				proxyList = [user.user_socks5 || user.user_proxy_ip];
-			} else { proxyList = [null]; }
+			} else {
+				proxyList = [null];
+			}
 		} catch (e) {
 			proxyList = [user.user_socks5 || user.user_proxy_ip];
 		}
@@ -2999,7 +3003,9 @@ const SubscriptionService = {
 		if (allowDirect) {
 			let hasDirect = proxyList.some(p => p === null || p === "");
 			if (!hasDirect) proxyList.push(null);
-		} else { proxyList = proxyList.filter(p => p !== null && p !== ""); }
+		} else {
+			proxyList = proxyList.filter(p => p !== null && p !== "");
+		}
 		if (proxyList.length === 0) proxyList = [null];
 		let resolvedProxies = [];
 		for (let locIdx = 0; locIdx < proxyList.length; locIdx++) {
@@ -3124,18 +3130,29 @@ const SubscriptionService = {
 			if (user.start_on_first_connect === 1) {
 				if (user.first_connection_time) {
 					expireTimestamp = Math.floor((user.first_connection_time + user.expiry_days * 86400000) / 1000);
-				} else { expireTimestamp = Math.floor((Date.now() + user.expiry_days * 86400000) / 1000); }
-			} else if (user.created_at) { expireTimestamp = Math.floor((new Date(user.created_at).getTime() + user.expiry_days * 86400000) / 1000); }
+				} else {
+					expireTimestamp = Math.floor((Date.now() + user.expiry_days * 86400000) / 1000);
+				}
+			} else if (user.created_at) {
+				expireTimestamp = Math.floor((new Date(user.created_at).getTime() + user.expiry_days * 86400000) / 1000);
+			}
 		}
 		const subUserInfo = `upload=0; download=${downloadBytes}; total=${totalBytes}; expire=${expireTimestamp}`;
-		return new Response(subContent, { headers: { "Content-Type": "text/plain; charset=utf-8", "Access-Control-Allow-Origin": "*", "Cache-Control": "no-store", "Subscription-Userinfo": subUserInfo, }, });
+		return new Response(subContent, {
+			headers: {
+				"Content-Type": "text/plain; charset=utf-8",
+				"Access-Control-Allow-Origin": "*",
+				"Cache-Control": "no-store",
+				"Subscription-Userinfo": subUserInfo,
+			},
+		});
 	},
 	async generateYaml(user, host) {
 		let ips = [host];
 		if (user.auto_rotate_ip === 1) {
 			const cachedIpsData = await getCachedIps();
 			const randomIps = getRandomIps(cachedIpsData, user.ip_operator || "all", user.ip_count || 20);
-			if (randomIps.length > 0) ips = [host, ...randomIps.filter(ip => ip !== host)];
+			if (randomIps.length > 0) ips = randomIps;
 		}
 		if (ips.length === 1 && ips[0] === host && user.ips) {
 			const parsedIps = user.ips.split("\n").map((ip) => ip.trim()).filter((ip) => ip.length > 0);
@@ -3149,7 +3166,9 @@ const SubscriptionService = {
 				proxyList = JSON.parse(user.user_socks5);
 			} else if (user.user_socks5 || user.user_proxy_ip) {
 				proxyList = [user.user_socks5 || user.user_proxy_ip];
-			} else { proxyList = [null]; }
+			} else {
+				proxyList = [null];
+			}
 		} catch (e) {
 			proxyList = [user.user_socks5 || user.user_proxy_ip];
 		}
@@ -3158,7 +3177,9 @@ const SubscriptionService = {
 		if (allowDirect) {
 			let hasDirect = proxyList.some(p => p === null || p === "");
 			if (!hasDirect) proxyList.push(null);
-		} else { proxyList = proxyList.filter(p => p !== null && p !== ""); }
+		} else {
+			proxyList = proxyList.filter(p => p !== null && p !== "");
+		}
 		if (proxyList.length === 0) proxyList = [null];
 		let resolvedProxies = [];
 		for (let locIdx = 0; locIdx < proxyList.length; locIdx++) {
@@ -3214,7 +3235,9 @@ const SubscriptionService = {
 			if (countryCode && countryCode !== "UN" && countryCode.length === 2) {
 				const codePoints = countryCode.toUpperCase().split("").map((char) => 127397 + char.charCodeAt(0));
 				try { flagEmoji = String.fromCodePoint(...codePoints); } catch (e) { }
-			} else if (proxyStr) { flagEmoji = "🌍"; }
+			} else if (proxyStr) {
+				flagEmoji = "🌍";
+			}
 			const currentDynPath = rawPath + (proxyItem !== null && proxyItem !== "" ? "/loc-" + locIdx : "");
 			resolvedProxies.push({ flagEmoji, currentDynPath });
 		}
@@ -3240,17 +3263,19 @@ const SubscriptionService = {
 						let uniqueName = baseName + " " + nameCounter[baseName];
 						proxyNames.push(uniqueName);
 						let pObj = "  - name: \"" + uniqueName + "\"\n" +
-							"    type: vless\n" +
-							"    server: " + yamlIp + "\n" +
-							"    port: " + portStr + "\n" +
-							"    uuid: " + user.uuid + "\n" +
-							"    udp: true\n" +
-							"    network: ws\n" +
-							"    ws-opts:\n" +
-							"      path: " + proxy.currentDynPath + "\n" +
-							"      headers:\n" +
-							"        Host: " + host + "\n";
-						if (isTlsPort) { pObj += "    tls: true\n    servername: " + host + "\n    skip-cert-verify: false\n"; }
+						           "    type: vless\n" +
+						           "    server: " + yamlIp + "\n" +
+						           "    port: " + portStr + "\n" +
+						           "    uuid: " + user.uuid + "\n" +
+						           "    udp: true\n" +
+						           "    network: ws\n" +
+						           "    ws-opts:\n" +
+						           "      path: " + proxy.currentDynPath + "\n" +
+						           "      headers:\n" +
+						           "        Host: " + host + "\n";
+						if (isTlsPort) {
+							pObj += "    tls: true\n    servername: " + host + "\n    skip-cert-verify: false\n";
+						}
 						yamlProxies.push(pObj);
 					}
 					if (enableTrojan) {
@@ -3258,17 +3283,19 @@ const SubscriptionService = {
 						let uniqueName = baseName + " " + nameCounter[baseName];
 						proxyNames.push(uniqueName);
 						let pObj = "  - name: \"" + uniqueName + "\"\n" +
-							"    type: trojan\n" +
-							"    server: " + yamlIp + "\n" +
-							"    port: " + portStr + "\n" +
-							"    password: " + user.uuid + "\n" +
-							"    udp: true\n" +
-							"    network: ws\n" +
-							"    ws-opts:\n" +
-							"      path: " + proxy.currentDynPath + "\n" +
-							"      headers:\n" +
-							"        Host: " + host + "\n";
-						if (isTlsPort) { pObj += "    skip-cert-verify: false\n    sni: " + host + "\n"; }
+						           "    type: trojan\n" +
+						           "    server: " + yamlIp + "\n" +
+						           "    port: " + portStr + "\n" +
+						           "    password: " + user.uuid + "\n" +
+						           "    udp: true\n" +
+						           "    network: ws\n" +
+						           "    ws-opts:\n" +
+						           "      path: " + proxy.currentDynPath + "\n" +
+						           "      headers:\n" +
+						           "        Host: " + host + "\n";
+						if (isTlsPort) {
+							pObj += "    skip-cert-verify: false\n    sni: " + host + "\n";
+						}
 						yamlProxies.push(pObj);
 					}
 					if (enableSS) {
@@ -3276,125 +3303,86 @@ const SubscriptionService = {
 						let uniqueName = baseName + " " + nameCounter[baseName];
 						proxyNames.push(uniqueName);
 						let pObj = "  - name: \"" + uniqueName + "\"\n" +
-							"    type: ss\n" +
-							"    server: " + yamlIp + "\n" +
-							"    port: " + portStr + "\n" +
-							"    cipher: aes-256-gcm\n" +
-							"    password: \"" + user.uuid + "\"\n" +
-							"    plugin: v2ray-plugin\n" +
-							"    plugin-opts:\n" +
-							"      mode: websocket\n" +
-							"      mux: false\n" +
-							"      host: \"" + host + "\"\n" +
-							"      path: \"" + proxy.currentDynPath + "\"\n";
-						if (isTlsPort) { pObj += "      tls: true\n      skip-cert-verify: false\n"; }
+						           "    type: ss\n" +
+						           "    server: " + yamlIp + "\n" +
+						           "    port: " + portStr + "\n" +
+						           "    cipher: aes-256-gcm\n" +
+						           "    password: \"" + user.uuid + "\"\n" +
+						           "    plugin: v2ray-plugin\n" +
+						           "    plugin-opts:\n" +
+						           "      mode: websocket\n" +
+						           "      mux: false\n" +
+						           "      host: \"" + host + "\"\n" +
+						           "      path: \"" + proxy.currentDynPath + "\"\n";
+						if (isTlsPort) {
+							pObj += "      tls: true\n      skip-cert-verify: false\n";
+						}
 						yamlProxies.push(pObj);
 					}
 				});
 			});
 		});
 		let yamlStr = "dns:\n" +
-			"  enable: true\n" +
-			"  prefer-h3: false\n" +
-			"  use-hosts: true\n" +
-			"  use-system-hosts: true\n" +
-			"  respect-rules: false\n" +
-			"  ipv6: true\n" +
-			"  default-nameserver:\n" +
-			"    - 223.5.5.5\n" +
-			"  enhanced-mode: fake-ip\n" +
-			"  fake-ip-range: 198.18.0.1/16\n" +
-			"  nameserver-policy:\n" +
-			"    www.baidu.com: 114.114.114.114\n" +
-			"    +.internal.crop.com: 10.0.0.1\n" +
-			"    geosite:cn: https://dns.alidns.com/dns-query\n" +
-			"  nameserver:\n" +
-			"    - https://dns.alidns.com/dns-query\n" +
-			"    - system://\n" +
-			"  fallback:\n" +
-			"    - tls://8.8.8.8#RULES\n" +
-			"  proxy-server-nameserver:\n" +
-			"    - https://doh.pub/dns-query\n" +
-			"  fallback-filter:\n" +
-			"    geoip: true\n" +
-			"    geoip-code: CN\n" +
-			"    geosite: []\n" +
-			"    ipcidr:\n" +
-			"      - 240.0.0.0/4\n" +
-			"    domain:\n" +
-			"      - \"+.google.com\"\n" +
-			"      - \"+.facebook.com\"\n" +
-			"      - \"+.youtube.com\"\n\n" +
-			"proxies:\n";
-		yamlStr += yamlProxies.join("\n");
-		let flagGroups = {};
-		proxyNames.forEach(n => {
-			const parts = n.split(" | ");
-			if (parts.length >= 3) {
-				const flag = parts[1];
-				if (!flagGroups[flag]) flagGroups[flag] = [];
-				flagGroups[flag].push(n);
-			}
-		});
-		const getPersianName = (flag) => {
-			if (flag === "🌐" || flag === "🌍") return "مستقیم";
-			try {
-				const chars = [...flag];
-				if (chars.length === 2) {
-					const code = String.fromCharCode(chars[0].codePointAt(0) - 127397) + String.fromCharCode(chars[1].codePointAt(0) - 127397);
-					return new Intl.DisplayNames(['fa'], { type: 'region' }).of(code.toUpperCase()) || 'سرور';
-				}
-			} catch (e) { }
-			return 'سرور';
-		};
-		yamlStr += "\n\nproxy-groups:\n" +
-			"  - name: \"🚀 انتخاب مسیر\"\n" +
-			"    type: select\n" +
-			"    proxies:\n";
-		Object.keys(flagGroups).forEach(flag => {
-			yamlStr += "      - \"" + flag + " " + getPersianName(flag) + "\"\n";
-		});
-		yamlStr += "      - \"DIRECT\"\n";
-		Object.keys(flagGroups).forEach(flag => {
-			yamlStr += "\n  - name: \"" + flag + " " + getPersianName(flag) + "\"\n" +
-				"    type: url-test\n" +
-				"    url: \"https://www.gstatic.com/generate_204\"\n" +
-				"    interval: 600\n" +
-				"    tolerance: 80\n" +
-				"    proxies:\n";
-			flagGroups[flag].forEach(n => {
-				yamlStr += "      - \"" + n + "\"\n";
-			});
-		});
+		              "  enable: true\n" +
+		              "  prefer-h3: false\n" +
+		              "  use-hosts: true\n" +
+		              "  use-system-hosts: true\n" +
+		              "  respect-rules: false\n" +
+		              "  ipv6: true\n" +
+		              "  default-nameserver:\n" +
+		              "    - 1.1.1.1\n" +
+		              "    - 8.8.8.8\n" +
+		              "  enhanced-mode: fake-ip\n" +
+		              "  fake-ip-range: 198.18.0.1/16\n" +
+		              "  nameserver:\n" +
+		              "    - https://cloudflare-dns.com/dns-query\n" +
+		              "    - https://dns.google/dns-query\n" +
+		              "  fallback:\n" +
+		              "    - tls://1.1.1.1#RULES\n" +
+		              "    - tls://8.8.8.8#RULES\n" +
+		              "  proxy-server-nameserver:\n" +
+		              "    - https://cloudflare-dns.com/dns-query\n" +
+		              "  fallback-filter:\n" +
+		              "    geoip: true\n" +
+		              "    geoip-code: IR\n" +
+		              "    geosite: []\n" +
+		              "    ipcidr:\n" +
+		              "      - 240.0.0.0/4\n" +
+		              "    domain:\n" +
+		              "      - \"+.google.com\"\n" +
+		              "      - \"+.facebook.com\"\n" +
+		              "      - \"+.youtube.com\"\n" +
+		              "      - \"+.twitter.com\"\n" +
+		              "      - \"+.instagram.com\"\n" +
+		              "      - \"+.telegram.org\"\n\n";
 		yamlStr += "\nrules:\n" +
-			"  - AND,((DST-PORT,443),(NETWORK,UDP)),REJECT\n" +
-			"  - DOMAIN-SUFFIX,discord.com,DIRECT\n" +
-			"  - DOMAIN-KEYWORD,discord,DIRECT\n" +
-			"  - GEOIP,LAN,DIRECT\n" +
-			"  - GEOIP,IR,DIRECT\n" +
-			"  - DOMAIN-SUFFIX,ir,DIRECT\n" +
-			"  - MATCH,🚀 انتخاب مسیر\n\n" +
-			"mixed-port: 10809\n" +
-			"allow-lan: false\n" +
-			"bind-address: 127.0.0.1\n" +
-			"mode: rule\n" +
-			"log-level: info\n" +
-			"ipv6: false\n" +
-			"unified-delay: true\n" +
-			"external-controller: 127.0.0.1:9090\n" +
-			"secret: db9a32d3-fda9-41dc-bdef-0f1e9de2392a\n\n" +
-			"sniffer:\n" +
-			"  enable: true\n" +
-			"  force-dns-mapping: true\n" +
-			"  parse-pure-ip: true\n" +
-			"  override-destination: true\n" +
-			"  sniff:\n" +
-			"    HTTP:\n" +
-			"      ports: [80, 8080-8880]\n" +
-			"    TLS:\n" +
-			"      ports: [443]\n" +
-			"    QUIC:\n" +
-			"      ports: [443]\n";
+		           "  - DOMAIN-SUFFIX,discord.com,DIRECT\n" +
+		           "  - DOMAIN-KEYWORD,discord,DIRECT\n" +
+		           "  - GEOIP,LAN,DIRECT\n" +
+		           "  - GEOIP,IR,DIRECT\n" +
+		           "  - DOMAIN-SUFFIX,ir,DIRECT\n" +
+		           "  - MATCH,🚀 انتخاب مسیر\n\n" +
+		           "mixed-port: 10809\n" +
+		           "allow-lan: false\n" +
+		           "bind-address: 127.0.0.1\n" +
+		           "mode: rule\n" +
+		           "log-level: info\n" +
+		           "ipv6: false\n" +
+		           "unified-delay: true\n" +
+		           "external-controller: 127.0.0.1:9090\n" +
+		           "secret: db9a32d3-fda9-41dc-bdef-0f1e9de2392a\n\n" +
+		           "sniffer:\n" +
+		           "  enable: true\n" +
+		           "  force-dns-mapping: true\n" +
+		           "  parse-pure-ip: true\n" +
+		           "  override-destination: true\n" +
+		           "  sniff:\n" +
+		           "    HTTP:\n" +
+		           "      ports: [80, 8080-8880]\n" +
+		           "    TLS:\n" +
+		           "      ports: [443]\n" +
+		           "    QUIC:\n" +
+		           "      ports: [443]\n";
 		const downloadBytes = Math.floor((user.used_gb || 0) * 1073741824);
 		const totalBytes = user.limit_gb ? Math.floor(user.limit_gb * 1073741824) : 0;
 		let expireTimestamp = 0;
@@ -3402,8 +3390,12 @@ const SubscriptionService = {
 			if (user.start_on_first_connect === 1) {
 				if (user.first_connection_time) {
 					expireTimestamp = Math.floor((user.first_connection_time + user.expiry_days * 86400000) / 1000);
-				} else { expireTimestamp = Math.floor((Date.now() + user.expiry_days * 86400000) / 1000); }
-			} else if (user.created_at) { expireTimestamp = Math.floor((new Date(user.created_at).getTime() + user.expiry_days * 86400000) / 1000); }
+				} else {
+					expireTimestamp = Math.floor((Date.now() + user.expiry_days * 86400000) / 1000);
+				}
+			} else if (user.created_at) {
+				expireTimestamp = Math.floor((new Date(user.created_at).getTime() + user.expiry_days * 86400000) / 1000);
+			}
 		}
 		const subUserInfo = `upload=0; download=${downloadBytes}; total=${totalBytes}; expire=${expireTimestamp}`;
 		return new Response(yamlStr, {
@@ -3478,76 +3470,20 @@ function getSelectedUserProxy(userSocks5, request) {
 	const selected = proxyList[idx] || proxyList[0];
 	return typeof selected === "object" ? selected.proxy || "" : String(selected || "");
 }
-function sniffTlsSni(data) {
-	if (!data || data.byteLength < 44) return null;
-	try {
-		if (data[0] !== 0x16) return null;
-		if (data[5] !== 0x01) return null;
-		let pos = 43;
-		if (pos >= data.byteLength) return null;
-		const sessionIdLen = data[pos];
-		pos += 1 + sessionIdLen;
-		if (pos + 2 > data.byteLength) return null;
-		const cipherSuitesLen = (data[pos] << 8) | data[pos + 1];
-		pos += 2 + cipherSuitesLen;
-		if (pos + 1 > data.byteLength) return null;
-		const compMethodsLen = data[pos];
-		pos += 1 + compMethodsLen;
-		if (pos + 2 > data.byteLength) return null;
-		const extensionsLen = (data[pos] << 8) | data[pos + 1];
-		pos += 2;
-		const endPos = Math.min(pos + extensionsLen, data.byteLength);
-		while (pos + 4 <= endPos) {
-			const extType = (data[pos] << 8) | data[pos + 1];
-			const extLen = (data[pos + 2] << 8) | data[pos + 3];
-			pos += 4;
-			if (extType === 0x0000 && pos + 2 <= endPos) {
-				let sniPos = pos + 2;
-				if (sniPos < endPos && data[sniPos] === 0x00) {
-					if (sniPos + 3 <= endPos) {
-						const sniLen = (data[sniPos + 1] << 8) | data[sniPos + 2];
-						if (sniPos + 3 + sniLen <= endPos && sniLen > 0) {
-							const domain = TEXT_DECODER.decode(data.subarray(sniPos + 3, sniPos + 3 + sniLen));
-							if (domain && domain.length > 0 && domain.length < 256 && !domain.includes(" ") && !domain.includes("\0")) {
-								return domain;
-							}
-						}
-					}
-				}
-				break;
-			}
-			pos += extLen;
-		}
-	} catch (e) { }
-	return null;
-}
-function sniffHttpHost(data) {
-	if (!data || data.byteLength < 14) return null;
-	try {
-		const sliceLen = Math.min(data.byteLength, 1024);
-		const text = TEXT_DECODER.decode(data.subarray(0, sliceLen));
-		if (/^(GET|POST|HEAD|PUT|DELETE|OPTIONS|CONNECT|PATCH)\s/i.test(text)) {
-			const match = text.match(/\r\n[Hh][Oo][Ss][Tt]:\s*([^\r\n:]+)/);
-			if (match && match[1]) {
-				const host = match[1].trim();
-				if (host.length > 0 && host.length < 256 && !host.includes(" ") && !host.includes("\0")) {
-					return host;
-				}
-			}
-		}
-	} catch (e) { }
-	return null;
-}
 async function handlevIees(env, storedData = null, ctx = null, request = null) {
 	let rawClientIP = request ? request.headers.get("CF-Connecting-IP") || "unknown" : "unknown";
 	let clientIP = rawClientIP;
 	if (rawClientIP !== "unknown") {
 		if (rawClientIP.includes(":")) {
 			const parts = rawClientIP.split(":");
-			if (parts.length >= 4) { clientIP = parts.slice(0, 4).join(":") + "::/64"; }
+			if (parts.length >= 4) {
+				clientIP = parts.slice(0, 4).join(":") + "::/64";
+			}
 		} else if (rawClientIP.includes(".")) {
 			const parts = rawClientIP.split(".");
-			if (parts.length === 4) { clientIP = parts.slice(0, 3).join(".") + ".0/24"; }
+			if (parts.length === 4) {
+				clientIP = parts.slice(0, 3).join(".") + ".0/24";
+			}
 		}
 	}
 	const socketPair = new WebSocketPair();
@@ -3565,8 +3501,14 @@ async function handlevIees(env, storedData = null, ctx = null, request = null) {
 	let targetDoh = "https://cloudflare-dns.com/dns-query";
 	function addBytes(bytes) {
 		if (bytes <= 0) return;
-		if (!username) { uncountedBytes += bytes; return; }
-		if (uncountedBytes > 0) { bytes += uncountedBytes; uncountedBytes = 0; }
+		if (!username) {
+			uncountedBytes += bytes;
+			return;
+		}
+		if (uncountedBytes > 0) {
+			bytes += uncountedBytes;
+			uncountedBytes = 0;
+		}
 		let current = GLOBAL_TRAFFIC_CACHE.get(username) || 0;
 		GLOBAL_TRAFFIC_CACHE.set(username, current + bytes);
 		GLOBAL_LAST_ACTIVE_WRITE.set(username, Date.now());
@@ -3578,7 +3520,10 @@ async function handlevIees(env, storedData = null, ctx = null, request = null) {
 			GLOBAL_WRITE_LOCK.set(username, true);
 			let toCommit = GLOBAL_TRAFFIC_CACHE.get(username) || 0;
 			let toCommitReq = USER_REQ_CACHE.get(username) || 0;
-			if (toCommit <= 0 && toCommitReq <= 0) { GLOBAL_WRITE_LOCK.set(username, false); return; }
+			if (toCommit <= 0 && toCommitReq <= 0) {
+				GLOBAL_WRITE_LOCK.set(username, false);
+				return;
+			}
 			GLOBAL_TRAFFIC_CACHE.set(username, (GLOBAL_TRAFFIC_CACHE.get(username) || 0) - toCommit);
 			USER_REQ_CACHE.set(username, (USER_REQ_CACHE.get(username) || 0) - toCommitReq);
 			GLOBAL_LAST_DB_WRITE.set(username, now);
@@ -3614,7 +3559,9 @@ async function handlevIees(env, storedData = null, ctx = null, request = null) {
 				if (ipConns <= 1) {
 					userIps.delete(clientIP);
 					if (userIps.size === 0) GLOBAL_ACTIVE_IPS.delete(uname);
-				} else { userIps.set(clientIP, ipConns - 1); }
+				} else {
+					userIps.set(clientIP, ipConns - 1);
+				}
 			}
 		}
 		if (activeCount <= 0) {
@@ -3645,15 +3592,24 @@ async function handlevIees(env, storedData = null, ctx = null, request = null) {
 				};
 				if (ctx) {
 					ctx.waitUntil(writeTask());
-				} else { writeTask(); }
-			} else { GLOBAL_LAST_ACTIVE_WRITE.delete(uname); }
-		} else { ACTIVE_CONNECTIONS_COUNT.set(uname, activeCount); }
+				} else {
+					writeTask();
+				}
+			} else {
+				GLOBAL_LAST_ACTIVE_WRITE.delete(uname);
+			}
+		} else {
+			ACTIVE_CONNECTIONS_COUNT.set(uname, activeCount);
+		}
 	};
 	let heartbeat;
 	const runHeartbeat = async () => {
 		if (serverSock.readyState === WebSocket.OPEN) {
 			try {
-				if (!validUUID || !username) { heartbeat = setTimeout(runHeartbeat, Math.floor(Math.random() * 5000) + 20000); return; }
+				if (!validUUID || !username) {
+					heartbeat = setTimeout(runHeartbeat, Math.floor(Math.random() * 5000) + 20000);
+					return;
+				}
 				const nowTime = Date.now();
 				const lastCheck = GLOBAL_LAST_ACTIVE_WRITE.get(username + "_hb") || 0;
 				if (nowTime - lastCheck >= 180000) {
@@ -3688,7 +3644,10 @@ async function handlevIees(env, storedData = null, ctx = null, request = null) {
 							let needsDbUpdateForTimestamp = false;
 							for (const [ip, data] of Object.entries(activeIps)) {
 								const lastSeen = data && typeof data === "object" ? data.timestamp : data;
-								if (nowTime - lastSeen > 180000 && ip !== clientIP) { delete activeIps[ip]; hasChanges = true; }
+								if (nowTime - lastSeen > 180000 && ip !== clientIP) {
+									delete activeIps[ip];
+									hasChanges = true;
+								}
 							}
 							if (!activeIps[clientIP]) {
 								activeIps[clientIP] = { timestamp: nowTime, count: 1 };
@@ -3705,6 +3664,12 @@ async function handlevIees(env, storedData = null, ctx = null, request = null) {
 									needsDbUpdateForTimestamp = true;
 								}
 							}
+							const sortedIps = Object.keys(activeIps).sort((a, b) => {
+								const tA = typeof activeIps[a] === "object" ? activeIps[a].timestamp : activeIps[a];
+								const tB = typeof activeIps[b] === "object" ? activeIps[b].timestamp : activeIps[b];
+								return tB - tA;
+							});
+							/* Bypassed: if (user.ip_limit && user.ip_limit > 0 && sortedIps.indexOf(clientIP) >= user.ip_limit) isIpLimitExpired = true; */
 							if (hasChanges || needsDbUpdateForTimestamp || isIpLimitExpired) updatedActiveIps = JSON.stringify(activeIps);
 						}
 					}
@@ -3715,6 +3680,7 @@ async function handlevIees(env, storedData = null, ctx = null, request = null) {
 						return;
 					}
 					if (isIpLimitExpired) {
+						/* Bypassed: clearTimeout(heartbeat); closeSocketQuietly(serverSock); return; */
 					}
 					if (updatedActiveIps !== null) {
 						GLOBAL_LAST_DB_WRITE.set(username, nowTime);
@@ -3726,7 +3692,9 @@ async function handlevIees(env, storedData = null, ctx = null, request = null) {
 				}
 			} catch (e) { }
 			heartbeat = setTimeout(runHeartbeat, Math.floor(Math.random() * 5000) + 20000);
-		} else { clearTimeout(heartbeat); }
+		} else {
+			clearTimeout(heartbeat);
+		}
 	};
 	heartbeat = setTimeout(runHeartbeat, Math.floor(Math.random() * 5000) + 20000);
 	let remoteConnWrapper = { socket: null, connectingPromise: null, retryConnect: null };
@@ -3753,7 +3721,9 @@ async function handlevIees(env, storedData = null, ctx = null, request = null) {
 		activeRemoteWriter = null;
 	const releaseRemoteWriter = () => {
 		if (activeRemoteWriter) {
-			try { activeRemoteWriter.releaseLock(); } catch (e) { }
+			try {
+				activeRemoteWriter.releaseLock();
+			} catch (e) { }
 			activeRemoteWriter = null;
 		}
 		currentSocketWriter = null;
@@ -3772,10 +3742,14 @@ async function handlevIees(env, storedData = null, ctx = null, request = null) {
 		getWriter: getRemoteWriter,
 		releaseWriter: releaseRemoteWriter,
 		retryConnect: async () => {
-			if (typeof remoteConnWrapper.retryConnect === "function") { await remoteConnWrapper.retryConnect(); }
+			if (typeof remoteConnWrapper.retryConnect === "function") {
+				await remoteConnWrapper.retryConnect();
+			}
 		},
 		closeConnection: () => {
-			try { remoteConnWrapper.socket?.close(); } catch (e) { }
+			try {
+				remoteConnWrapper.socket?.close();
+			} catch (e) { }
 			closeSocketQuietly(serverSock);
 		},
 		name: "vIeesWSQueue",
@@ -3789,11 +3763,16 @@ async function handlevIees(env, storedData = null, ctx = null, request = null) {
 		if (isDnsQuery) {
 			if (isTrojanProto && cmd === 3) {
 				await forwardTrojanUDP(chunk, serverSock, addBytes, targetDns);
-			} else { const sent = await forwardvIeesUDP(chunk, serverSock, dnsRespHeader, addBytes, targetDns); if (sent) dnsRespHeader = null; }
+			} else {
+				const sent = await forwardvIeesUDP(chunk, serverSock, dnsRespHeader, addBytes, targetDns);
+				if (sent) dnsRespHeader = null;
+			}
 			return;
 		}
 		if (isHeaderParsed) {
-			if (remoteConnWrapper.connectingPromise) { await remoteConnWrapper.connectingPromise; }
+			if (remoteConnWrapper.connectingPromise) {
+				await remoteConnWrapper.connectingPromise;
+			}
 			if (isShadowsocksProto && ssUpAeadCtx) {
 				ssUpBuffer = concatBytes(ssUpBuffer, chunk);
 				let readOff = 0;
@@ -3817,459 +3796,580 @@ async function handlevIees(env, storedData = null, ctx = null, request = null) {
 						ssUpExpectedPayloadLen = null;
 					}
 				}
-				if (readOff > 0) { ssUpBuffer = readOff === ssUpBuffer.byteLength ? new Uint8Array(0) : ssUpBuffer.slice(readOff); }
-			} else { await writeToRemote(chunk); }
+				if (readOff > 0) {
+					ssUpBuffer = readOff === ssUpBuffer.byteLength ? new Uint8Array(0) : ssUpBuffer.slice(readOff);
+				}
+			} else {
+				await writeToRemote(chunk);
+			}
 			return;
 		}
 		chunkBuffer = concatBytes(chunkBuffer, chunk);
-		if (chunkBuffer.byteLength > 16384) { serverSock.close(1009, "Payload Too Large"); return; }
-		let isTrojan = false;
-		let isShadowsocks = false;
-		if (chunkBuffer.byteLength >= 58 && chunkBuffer[56] === 0x0D && chunkBuffer[57] === 0x0A) {
-			const checkHex = TEXT_DECODER.decode(chunkBuffer.slice(0, 56)).toLowerCase();
-			if (/^[0-9a-f]{56}$/.test(checkHex)) { isTrojan = true; }
-		} else if (chunkBuffer.byteLength > 0 && chunkBuffer[0] !== 0x00 && chunkBuffer[0] !== 0x01 && chunkBuffer[0] !== 0x02 && chunkBuffer[0] !== 0x03) {
-			isShadowsocks = true;
-		}
-		cmd = 0;
-		let port = 0;
-		let addrType = 0;
-		let addr = "";
-		let rawData = null;
-		let respHeader = null;
-		let userLookupKey = null;
-		let user = null;
-		if (isHeaderParsing) return;
-		isHeaderParsing = true;
-		isTrojanProto = isTrojan;
-		try {
-			if (isShadowsocks) {
-				if (chunkBuffer.byteLength < 50) { isHeaderParsing = false; return; }
-				if (request) {
-					const reqUrl = new URL(request.url);
-					const pathParts = reqUrl.pathname.split("/");
-					if (pathParts.length >= 4) userLookupKey = pathParts[3];
+		if (chunkBuffer.byteLength > 16384) {
+				serverSock.close(1009, "Payload Too Large");
+				return;
+			}
+			let isTrojan = false;
+			let isShadowsocks = false;
+			if (chunkBuffer.byteLength >= 58 && chunkBuffer[56] === 0x0D && chunkBuffer[57] === 0x0A) {
+				const checkHex = TEXT_DECODER.decode(chunkBuffer.slice(0, 56)).toLowerCase();
+				if (/^[0-9a-f]{56}$/.test(checkHex)) {
+					isTrojan = true;
 				}
-				if (userLookupKey) { user = await env.DB.prepare("SELECT * FROM users WHERE uuid LIKE ? AND is_active = 1").bind('%' + userLookupKey).first(); }
-				if (!user || !String(user.connection_type).includes("shadowsocks")) { serverSock.close(); return; }
-				isShadowsocksProto = true;
-				const salt = chunkBuffer.slice(0, 32);
-				const key = await SSCrypto.deriveSubkey(user.uuid, salt);
-				const nonce = new Uint8Array(12);
-				ssUpAeadCtx = { key, nonce };
-				const encLen = chunkBuffer.slice(32, 32 + 18);
-				const decLenBuf = await SSCrypto.decryptChunk(key, nonce, encLen);
-				if (!decLenBuf) { serverSock.close(); return; }
-				const payloadLen = (decLenBuf[0] << 8) | decLenBuf[1];
-				if (chunkBuffer.byteLength < 50 + payloadLen + 16) { isHeaderParsing = false; return; }
-				const encPayload = chunkBuffer.slice(50, 50 + payloadLen + 16);
-				const decryptedPayload = await SSCrypto.decryptChunk(key, nonce, encPayload);
-				if (!decryptedPayload) { serverSock.close(); return; }
-				let offset = 0;
-				addrType = decryptedPayload[offset++];
-				if (addrType === 1) {
-					addr = `${decryptedPayload[offset++]}.${decryptedPayload[offset++]}.${decryptedPayload[offset++]}.${decryptedPayload[offset++]}`;
-				} else if (addrType === 3) {
-					const domainLen = decryptedPayload[offset++];
-					addr = TEXT_DECODER.decode(decryptedPayload.slice(offset, offset + domainLen));
-					offset += domainLen;
-				} else if (addrType === 4) {
-					const v6 = [];
-					for (let i = 0; i < 8; i++) v6.push(((decryptedPayload[offset++] << 8) | decryptedPayload[offset++]).toString(16));
-					addr = v6.join(":");
-				} else { serverSock.close(); return; }
-				port = (decryptedPayload[offset++] << 8) | decryptedPayload[offset++];
-				cmd = 1;
-				rawData = decryptedPayload.slice(offset);
-				let bufOffset = 50 + payloadLen + 16;
-				ssUpBuffer = chunkBuffer.slice(bufOffset);
-				while (true) {
-					if (ssUpExpectedPayloadLen === null) {
-						if (ssUpBuffer.byteLength < 18) break;
-						const encL = ssUpBuffer.slice(0, 18);
-						const decL = await SSCrypto.decryptChunk(key, nonce, encL);
-						if (!decL) { serverSock.close(); return; }
-						ssUpExpectedPayloadLen = (decL[0] << 8) | decL[1];
-						ssUpBuffer = ssUpBuffer.slice(18);
+			} else if (chunkBuffer.byteLength > 0 && chunkBuffer[0] !== 0x00 && chunkBuffer[0] !== 0x01 && chunkBuffer[0] !== 0x02 && chunkBuffer[0] !== 0x03) {
+				isShadowsocks = true;
+			}
+			cmd = 0;
+			let port = 0;
+			let addrType = 0;
+			let addr = "";
+			let rawData = null;
+			let respHeader = null;
+			let userLookupKey = null;
+			let user = null;
+			if (isHeaderParsing) return;
+			isHeaderParsing = true;
+			isTrojanProto = isTrojan;
+			try {
+				if (isShadowsocks) {
+					if (chunkBuffer.byteLength < 50) { isHeaderParsing = false; return; }
+					if (request) {
+						const reqUrl = new URL(request.url);
+						const pathParts = reqUrl.pathname.split("/");
+						if (pathParts.length >= 4) userLookupKey = pathParts[3];
 					}
-					if (ssUpExpectedPayloadLen !== null) {
-						if (ssUpBuffer.byteLength < ssUpExpectedPayloadLen + 16) break;
-						const encP = ssUpBuffer.slice(0, ssUpExpectedPayloadLen + 16);
-						const decP = await SSCrypto.decryptChunk(key, nonce, encP);
-						if (!decP) { serverSock.close(); return; }
-						rawData = concatBytes(rawData, decP);
-						ssUpBuffer = ssUpBuffer.slice(ssUpExpectedPayloadLen + 16);
-						ssUpExpectedPayloadLen = null;
+					if (userLookupKey) {
+						user = await env.DB.prepare("SELECT * FROM users WHERE uuid LIKE ? AND is_active = 1").bind('%' + userLookupKey).first();
 					}
+					if (!user || !String(user.connection_type).includes("shadowsocks")) {
+						serverSock.close();
+						return;
+					}
+					isShadowsocksProto = true;
+					const salt = chunkBuffer.slice(0, 32);
+					const key = await SSCrypto.deriveSubkey(user.uuid, salt);
+					const nonce = new Uint8Array(12);
+					ssUpAeadCtx = { key, nonce };
+					const encLen = chunkBuffer.slice(32, 32 + 18);
+					const decLenBuf = await SSCrypto.decryptChunk(key, nonce, encLen);
+					if (!decLenBuf) { serverSock.close(); return; }
+					const payloadLen = (decLenBuf[0] << 8) | decLenBuf[1];
+					if (chunkBuffer.byteLength < 50 + payloadLen + 16) { isHeaderParsing = false; return; }
+					const encPayload = chunkBuffer.slice(50, 50 + payloadLen + 16);
+					const decryptedPayload = await SSCrypto.decryptChunk(key, nonce, encPayload);
+					if (!decryptedPayload) { serverSock.close(); return; }
+					let offset = 0;
+					addrType = decryptedPayload[offset++];
+					if (addrType === 1) {
+						addr = `${decryptedPayload[offset++]}.${decryptedPayload[offset++]}.${decryptedPayload[offset++]}.${decryptedPayload[offset++]}`;
+					} else if (addrType === 3) {
+						const domainLen = decryptedPayload[offset++];
+						addr = TEXT_DECODER.decode(decryptedPayload.slice(offset, offset + domainLen));
+						offset += domainLen;
+					} else if (addrType === 4) {
+						const v6 = [];
+						for (let i = 0; i < 8; i++) v6.push(((decryptedPayload[offset++] << 8) | decryptedPayload[offset++]).toString(16));
+						addr = v6.join(":");
+					} else {
+						serverSock.close();
+						return;
+					}
+					port = (decryptedPayload[offset++] << 8) | decryptedPayload[offset++];
+					cmd = 1;
+					rawData = decryptedPayload.slice(offset);
+					let bufOffset = 50 + payloadLen + 16;
+					ssUpBuffer = chunkBuffer.slice(bufOffset);
+					while (true) {
+						if (ssUpExpectedPayloadLen === null) {
+							if (ssUpBuffer.byteLength < 18) break;
+							const encL = ssUpBuffer.slice(0, 18);
+							const decL = await SSCrypto.decryptChunk(key, nonce, encL);
+							if (!decL) { serverSock.close(); return; }
+							ssUpExpectedPayloadLen = (decL[0] << 8) | decL[1];
+							ssUpBuffer = ssUpBuffer.slice(18);
+						}
+						if (ssUpExpectedPayloadLen !== null) {
+							if (ssUpBuffer.byteLength < ssUpExpectedPayloadLen + 16) break;
+							const encP = ssUpBuffer.slice(0, ssUpExpectedPayloadLen + 16);
+							const decP = await SSCrypto.decryptChunk(key, nonce, encP);
+							if (!decP) { serverSock.close(); return; }
+							rawData = concatBytes(rawData, decP);
+							ssUpBuffer = ssUpBuffer.slice(ssUpExpectedPayloadLen + 16);
+							ssUpExpectedPayloadLen = null;
+						}
+					}
+					respHeader = null;
+				} else if (isTrojan) {
+					const hexHash = TEXT_DECODER.decode(chunkBuffer.slice(0, 56)).toLowerCase();
+					userLookupKey = hexHash;
+					let offset = 58;
+					cmd = chunkBuffer[offset++];
+					addrType = chunkBuffer[offset++];
+					if (addrType === 1) {
+						if (chunkBuffer.byteLength < offset + 4 + 2 + 2) { isHeaderParsing = false; return; }
+						addr = `${chunkBuffer[offset++]}.${chunkBuffer[offset++]}.${chunkBuffer[offset++]}.${chunkBuffer[offset++]}`;
+					} else if (addrType === 3) {
+						if (chunkBuffer.byteLength < offset + 1) { isHeaderParsing = false; return; }
+						const domainLen = chunkBuffer[offset++];
+						if (chunkBuffer.byteLength < offset + domainLen + 2 + 2) { isHeaderParsing = false; return; }
+						addr = TEXT_DECODER.decode(chunkBuffer.slice(offset, offset + domainLen));
+						offset += domainLen;
+					} else if (addrType === 4) {
+						if (chunkBuffer.byteLength < offset + 16 + 2 + 2) { isHeaderParsing = false; return; }
+						const v6 = [];
+						for (let i = 0; i < 8; i++) {
+							v6.push(((chunkBuffer[offset++] << 8) | chunkBuffer[offset++]).toString(16));
+						}
+						addr = v6.join(":");
+					} else {
+						serverSock.close();
+						return;
+					}
+					port = (chunkBuffer[offset++] << 8) | chunkBuffer[offset++];
+					if (chunkBuffer[offset] !== 0x0D || chunkBuffer[offset + 1] !== 0x0A) {
+						serverSock.close();
+						return;
+					}
+					offset += 2;
+					rawData = chunkBuffer.slice(offset);
+					respHeader = null;
+					user = await env.DB.prepare("SELECT * FROM users WHERE trojan_hash = ? OR uuid = ? COLLATE NOCASE").bind(userLookupKey, userLookupKey).first();
+					if (!user) {
+						const { results } = await env.DB.prepare("SELECT * FROM users WHERE is_active = 1").all();
+						if (results) {
+							user = results.find(u => u.uuid && sha224Pure(u.uuid) === userLookupKey);
+							if (user) {
+								const updateHashTask = async () => {
+									try { await env.DB.prepare("UPDATE users SET trojan_hash = ? WHERE id = ?").bind(userLookupKey, user.id).run(); } catch (err) {}
+								};
+								if (ctx) ctx.waitUntil(updateHashTask());
+								else updateHashTask();
+							}
+						}
+					}
+				} else {
+					if (chunkBuffer.byteLength < 24) { isHeaderParsing = false; return; }
+					let optLen = chunkBuffer[17];
+					let requiredLen = 18 + optLen + 4;
+					if (chunkBuffer.byteLength < requiredLen) { isHeaderParsing = false; return; }
+					addrType = chunkBuffer[18 + optLen + 3];
+					if (addrType === 1) requiredLen += 4;
+					else if (addrType === 2) {
+						requiredLen += 1;
+						if (chunkBuffer.byteLength < requiredLen) { isHeaderParsing = false; return; }
+						requiredLen += chunkBuffer[18 + optLen + 4];
+					} else if (addrType === 3) requiredLen += 16;
+					else { serverSock.close(); return; }
+					if (chunkBuffer.byteLength < requiredLen) { isHeaderParsing = false; return; }
+					reqUUID = extractUUIDFromvIees(chunkBuffer);
+					if (!reqUUID) { serverSock.close(); return; }
+					userLookupKey = reqUUID;
+					let offset = 17;
+					optLen = chunkBuffer[offset++];
+					offset += optLen;
+					cmd = chunkBuffer[offset++];
+					port = (chunkBuffer[offset++] << 8) | chunkBuffer[offset++];
+					addrType = chunkBuffer[offset++];
+					if (addrType === 1) {
+						addr = `${chunkBuffer[offset++]}.${chunkBuffer[offset++]}.${chunkBuffer[offset++]}.${chunkBuffer[offset++]}`;
+					} else if (addrType === 2) {
+						const domainLen = chunkBuffer[offset++];
+						addr = TEXT_DECODER.decode(chunkBuffer.slice(offset, offset + domainLen));
+						offset += domainLen;
+					} else if (addrType === 3) {
+						const v6 = [];
+						for (let i = 0; i < 8; i++) v6.push(((chunkBuffer[offset++] << 8) | chunkBuffer[offset++]).toString(16));
+						addr = v6.join(":");
+					}
+					rawData = chunkBuffer.slice(offset);
+					respHeader = new Uint8Array([chunkBuffer[0], 0]);
+					user = await env.DB.prepare("SELECT * FROM users WHERE uuid = ? COLLATE NOCASE").bind(userLookupKey).first();
 				}
-				respHeader = null;
-			} else if (isTrojan) {
-				const hexHash = TEXT_DECODER.decode(chunkBuffer.slice(0, 56)).toLowerCase();
-				userLookupKey = hexHash;
-				let offset = 58;
-				cmd = chunkBuffer[offset++];
-				addrType = chunkBuffer[offset++];
-				if (addrType === 1) {
-					if (chunkBuffer.byteLength < offset + 4 + 2 + 2) { isHeaderParsing = false; return; }
-					addr = `${chunkBuffer[offset++]}.${chunkBuffer[offset++]}.${chunkBuffer[offset++]}.${chunkBuffer[offset++]}`;
-				} else if (addrType === 3) {
-					if (chunkBuffer.byteLength < offset + 1) { isHeaderParsing = false; return; }
-					const domainLen = chunkBuffer[offset++];
-					if (chunkBuffer.byteLength < offset + domainLen + 2 + 2) { isHeaderParsing = false; return; }
-					addr = TEXT_DECODER.decode(chunkBuffer.slice(offset, offset + domainLen));
-					offset += domainLen;
-				} else if (addrType === 4) {
-					if (chunkBuffer.byteLength < offset + 16 + 2 + 2) { isHeaderParsing = false; return; }
-					const v6 = [];
-					for (let i = 0; i < 8; i++) { v6.push(((chunkBuffer[offset++] << 8) | chunkBuffer[offset++]).toString(16)); }
-					addr = v6.join(":");
-				} else { serverSock.close(); return; }
-				port = (chunkBuffer[offset++] << 8) | chunkBuffer[offset++];
-				if (chunkBuffer[offset] !== 0x0D || chunkBuffer[offset + 1] !== 0x0A) { serverSock.close(); return; }
-				offset += 2;
-				rawData = chunkBuffer.slice(offset);
-				respHeader = null;
-				user = await env.DB.prepare("SELECT * FROM users WHERE trojan_hash = ? OR uuid = ? COLLATE NOCASE").bind(userLookupKey, userLookupKey).first();
-				if (!user) {
-					const { results } = await env.DB.prepare("SELECT * FROM users WHERE is_active = 1").all();
-					if (results) {
-						user = results.find(u => u.uuid && sha224Pure(u.uuid) === userLookupKey);
-						if (user) {
-							const updateHashTask = async () => {
-								try { await env.DB.prepare("UPDATE users SET trojan_hash = ? WHERE id = ?").bind(userLookupKey, user.id).run(); } catch (err) { }
-							};
-							if (ctx) ctx.waitUntil(updateHashTask());
-							else updateHashTask();
+				let isIpTarget = (isTrojan && (addrType === 1 || addrType === 4)) || (isShadowsocks && (addrType === 1 || addrType === 4)) || (!isTrojan && !isShadowsocks && (addrType === 1 || addrType === 3));
+				let isTelegramIp = isIpTarget && /^(149\.154\.|91\.108\.|91\.105\.19[23]\.|95\.161\.(6[4-9]|[7-9][0-9]|1[01][0-9]|12[0-7])\.|185\.76\.151\.|2001:b28:f23[dcef]:|2001:67c:4e8:|2a0a:f280:)/i.test(addr);
+				if (isIpTarget && port === 443 && !isTelegramIp) {
+					if (!rawData || rawData.byteLength === 0) {
+						isHeaderParsing = false;
+						return;
+					}
+					if (rawData[0] === 0x16 && (rawData.byteLength < 2 || rawData[1] === 0x03)) {
+						if (rawData.byteLength < 6) {
+							isHeaderParsing = false;
+							return;
+						}
+						if (rawData[5] === 0x01) {
+							const tlsRecordLen = (rawData[3] << 8) | rawData[4];
+							if (rawData.byteLength < 5 + tlsRecordLen && chunkBuffer.byteLength < 4096) {
+								isHeaderParsing = false;
+								return;
+							}
 						}
 					}
 				}
-			} else {
-				if (chunkBuffer.byteLength < 24) { isHeaderParsing = false; return; }
-				let optLen = chunkBuffer[17];
-				let requiredLen = 18 + optLen + 4;
-				if (chunkBuffer.byteLength < requiredLen) { isHeaderParsing = false; return; }
-				addrType = chunkBuffer[18 + optLen + 3];
-				if (addrType === 1) requiredLen += 4;
-				else if (addrType === 2) {
-					requiredLen += 1;
-					if (chunkBuffer.byteLength < requiredLen) { isHeaderParsing = false; return; }
-					requiredLen += chunkBuffer[18 + optLen + 4];
-				} else if (addrType === 3) requiredLen += 16;
-				else { serverSock.close(); return; }
-				if (chunkBuffer.byteLength < requiredLen) { isHeaderParsing = false; return; }
-				reqUUID = extractUUIDFromvIees(chunkBuffer);
-				if (!reqUUID) { serverSock.close(); return; }
-				userLookupKey = reqUUID;
-				let offset = 17;
-				optLen = chunkBuffer[offset++];
-				offset += optLen;
-				cmd = chunkBuffer[offset++];
-				port = (chunkBuffer[offset++] << 8) | chunkBuffer[offset++];
-				addrType = chunkBuffer[offset++];
-				if (addrType === 1) {
-					addr = `${chunkBuffer[offset++]}.${chunkBuffer[offset++]}.${chunkBuffer[offset++]}.${chunkBuffer[offset++]}`;
-				} else if (addrType === 2) {
-					const domainLen = chunkBuffer[offset++];
-					addr = TEXT_DECODER.decode(chunkBuffer.slice(offset, offset + domainLen));
-					offset += domainLen;
-				} else if (addrType === 3) {
-					const v6 = [];
-					for (let i = 0; i < 8; i++) v6.push(((chunkBuffer[offset++] << 8) | chunkBuffer[offset++]).toString(16));
-					addr = v6.join(":");
-				}
-				rawData = chunkBuffer.slice(offset);
-				respHeader = new Uint8Array([chunkBuffer[0], 0]);
-				user = await env.DB.prepare("SELECT * FROM users WHERE uuid = ? COLLATE NOCASE").bind(userLookupKey).first();
-			}
-			let isIpTarget = (isTrojan && (addrType === 1 || addrType === 4)) || (!isTrojan && !isShadowsocks && (addrType === 1 || addrType === 3));
-			let isTelegramIp = isIpTarget && /^(149\.154\.|91\.108\.|185\.76\.151\.|2001:b28:f23[dcef]:|2001:67c:4e8:)/i.test(addr);
-			let isFakeOrPrivateIp = isIpTarget && /^(198\.1[89]\.|127\.|10\.|192\.168\.|172\.(1[6-9]|2[0-9]|3[0-1])\.)/i.test(addr);
-			let isTlsTargetPort = TLS_PORTS.has(String(port)) || port === 443;
-			if (isIpTarget && !isTelegramIp && (isTlsTargetPort || isFakeOrPrivateIp || port === 80 || port === 8080)) {
-				if (!rawData || rawData.byteLength === 0) {
-					if (chunkBuffer.byteLength < 4096) { isHeaderParsing = false; return; }
-				} else if (rawData[0] === 0x16 && (rawData.byteLength < 2 || rawData[1] === 0x03)) {
-					if (rawData.byteLength < 6) { isHeaderParsing = false; return; }
-					if (rawData[5] === 0x01) {
-						const tlsRecordLen = (rawData[3] << 8) | rawData[4];
-						if (rawData.byteLength < 5 + tlsRecordLen && chunkBuffer.byteLength < 4096) { isHeaderParsing = false; return; }
-					}
-				}
-			}
-		} catch (e) { }
-		if (!user) { serverSock.close(); return; }
-		const userConn = String(user.connection_type || "vless").toLowerCase();
-		if (isTrojan) {
-			if (!userConn.includes("trojan")) { serverSock.close(); return; }
-		} else if (isShadowsocks) {
-			if (!userConn.includes("shadowsocks")) { serverSock.close(); return; }
-		} else {
-			if (!userConn.includes("vless") && userConn !== "vl" + "e" + "ss") { serverSock.close(); return; }
-		}
-		reqUUID = user.uuid;
-		if (request) {
-			const reqUrl = new URL(request.url);
-			const expectedPath = "/stream/PANEL_ZEUS/" + ((user.uuid || "").split("-")[4] || "default");
-			if (!reqUrl.pathname.startsWith(expectedPath)) { serverSock.close(); return; }
-		}
-		username = user.username;
-		validUUID = reqUUID;
-		let currentReqs = USER_REQ_CACHE.get(username) || 0;
-		USER_REQ_CACHE.set(username, currentReqs + 1);
-		if (!GLOBAL_TRAFFIC_CACHE.has(username)) { GLOBAL_TRAFFIC_CACHE.set(username, 0); }
-		if (isOfflineSet || serverSock.readyState !== WebSocket.OPEN) { return; }
-		if (user.is_active === 0) { serverSock.close(); return; }
-		const liveGb = (user.used_gb || 0) + ((GLOBAL_TRAFFIC_CACHE.get(username) || 0) / (1024 * 1024 * 1024));
-		if (user.limit_gb && liveGb >= user.limit_gb) { serverSock.close(); return; }
-		if (user.limit_req && user.used_req + (USER_REQ_CACHE.get(username) || 0) > user.limit_req) { serverSock.close(); return; }
-		if (user.start_on_first_connect === 1 && !user.first_connection_time && !GLOBAL_WRITE_LOCK.get(reqUUID + "_first_conn")) {
-			GLOBAL_WRITE_LOCK.set(reqUUID + "_first_conn", true);
-			const firstConnectNow = Date.now();
-			user.first_connection_time = firstConnectNow;
-			const updateFirstTask = async () => {
-				try {
-					await env.DB.prepare("UPDATE users SET first_connection_time = ? WHERE uuid = ?").bind(firstConnectNow, reqUUID).run();
-				} catch (e) {
-					GLOBAL_WRITE_LOCK.delete(reqUUID + "_first_conn");
-				}
-			};
-			if (ctx) ctx.waitUntil(updateFirstTask());
-			else updateFirstTask();
-		}
-		if (user.expiry_days) {
-			let isTimeExpired = false;
-			if (user.start_on_first_connect === 1) {
-				if (user.first_connection_time) {
-					const expiryDate = new Date(user.first_connection_time + user.expiry_days * 24 * 60 * 60 * 1000);
-					if (new Date() > expiryDate) isTimeExpired = true;
-				}
-			} else if (user.created_at) {
-				const created = new Date(user.created_at);
-				const expiryDate = new Date(created.getTime() + user.expiry_days * 24 * 60 * 60 * 1000);
-				if (new Date() > expiryDate) isTimeExpired = true;
-			}
-			if (isTimeExpired) {
-				try { await env.DB.prepare("UPDATE users SET is_active = 0, last_active = 0 WHERE uuid = ?").bind(reqUUID).run(); } catch (e) { }
+			} catch (e) { }
+			if (!user) {
 				serverSock.close();
 				return;
 			}
-		}
-		if (user.block_porn === 1 && user.block_ads === 1) {
-			targetDns = "94.140.14.15";
-			targetDoh = "https://family.adguard-dns.com/dns-query";
-		} else if (user.block_porn === 1) {
-			targetDns = "1.1.1.3";
-			targetDoh = "https://family.cloudflare-dns.com/dns-query";
-		} else if (user.block_ads === 1) { targetDns = "94.140.14.14"; targetDoh = "https://dns.adguard-dns.com/dns-query"; }
-		if (clientIP && clientIP !== "unknown") {
-			let activeIps = {};
-			try {
-				activeIps = JSON.parse(user.active_ips || "{}");
-			} catch (e) { }
-			const now = Date.now();
-			for (const [ip, data] of Object.entries(activeIps)) {
-				const lastSeen = data && typeof data === "object" ? data.timestamp : data;
-				if (now - lastSeen > 180000) delete activeIps[ip];
-			}
-			let isNewIp = false;
-			if (!activeIps[clientIP]) {
-				activeIps[clientIP] = { timestamp: now, count: 1 };
-				isNewIp = true;
-			} else {
-				if (typeof activeIps[clientIP] === "object") {
-					activeIps[clientIP].timestamp = now;
-					activeIps[clientIP].count = (activeIps[clientIP].count || 0) + 1;
-				} else {
-					activeIps[clientIP] = { timestamp: now, count: 1 };
-				}
-			}
-			let lastDbW = GLOBAL_LAST_DB_WRITE.get(username) || 0;
-			let needIpWrite = isNewIp;
-			let needTimeWrite = (now - lastDbW > 900000);
-			if (needIpWrite || needTimeWrite) {
-				GLOBAL_LAST_ACTIVE_WRITE.set(username, now);
-				GLOBAL_LAST_DB_WRITE.set(username, now);
-				const updateTask = async () => {
-					try { await env.DB.prepare("UPDATE users SET active_ips = ?, last_active = ? WHERE uuid = ?").bind(JSON.stringify(activeIps), now, reqUUID).run(); } catch (e) { }
-				};
-				if (ctx) ctx.waitUntil(updateTask());
-				else updateTask();
-			}
-		}
-		isHeaderParsed = true;
-		chunkBuffer = new Uint8Array(0);
-		let activeCount = ACTIVE_CONNECTIONS_COUNT.get(username) || 0;
-		ACTIVE_CONNECTIONS_COUNT.set(username, activeCount + 1);
-		let userIps = GLOBAL_ACTIVE_IPS.get(username);
-		if (!userIps) { userIps = new Map(); GLOBAL_ACTIVE_IPS.set(username, userIps); }
-		userIps.set(clientIP, (userIps.get(clientIP) || 0) + 1);
-		hasCountedAsActive = true;
-		try {
-			let isDomainAddress = (isTrojanProto && addrType === 3) || (!isTrojanProto && addrType === 2);
-			let isIpAddress = (isTrojanProto && (addrType === 1 || addrType === 4)) || (!isTrojanProto && (addrType === 1 || addrType === 3));
-			let sniffedDomain = null;
-			if (isIpAddress && !isTelegramIp && rawData && rawData.byteLength > 0) {
-				if (rawData[0] === 0x16) {
-					sniffedDomain = sniffTlsSni(rawData);
-				} else if (port === 80 || port === 8080 || port === 8880 || /^(GET|POST|HEAD|PUT|DELETE|OPTIONS|CONNECT|PATCH)\s/i.test(TEXT_DECODER.decode(rawData.subarray(0, 10)))) {
-					sniffedDomain = sniffHttpHost(rawData);
-				}
-			}
-			let checkDomain = isDomainAddress ? addr : sniffedDomain;
-			if (isIpAddress && sniffedDomain) { addr = sniffedDomain; }
-			if (user.block_porn === 1 || user.block_ads === 1) {
-				const dohDomains = ["dns.google", "cloudflare-dns.com", "one.one.one.one", "family.cloudflare-dns.com", "security.cloudflare-dns.com", "dns.quad9.net", "doh.opendns.com", "dns.adguard.com", "dns.adguard-dns.com"];
-				if (port === 443 && checkDomain && dohDomains.some(d => checkDomain === d || checkDomain.endsWith("." + d))) { serverSock.close(); return; }
-			}
-			if ((user.block_ads === 1 || user.block_porn === 1) && checkDomain && port !== 53) {
-				try {
-					const dnsCheck = await dohQuery(checkDomain, "A", targetDoh);
-					const isBlocked = dnsCheck.some((r) => r.data === "0.0.0.0" || r.data === "::" || r.data === "176.103.130.130" || r.data === "127.0.0.1");
-					if (isBlocked) { serverSock.close(); return; }
-					if (user.block_porn === 1) {
-						if (/^(www\.)?google\.[a-z.]+$/i.test(checkDomain)) {
-							addr = "forcesafesearch.google.com";
-						} else if (/^(www\.|m\.)?youtube\.com$/i.test(checkDomain)) {
-							addr = "restrict.youtube.com";
-						} else if (/^(www\.)?bing\.com$/i.test(checkDomain)) {
-							addr = "strict.bing.com";
-						} else if (/^(www\.)?duckduckgo\.com$/i.test(checkDomain)) { addr = "safe.duckduckgo.com"; }
-					}
-				} catch (e) { }
-			}
-			if ((isTrojanProto && cmd === 3) || (!isTrojanProto && cmd === 2)) {
-				if (port === 53) {
-					isDnsQuery = true;
-					if (isTrojanProto) {
-						await forwardTrojanUDP(rawData, serverSock, addBytes, targetDns);
-					} else {
-						dnsRespHeader = respHeader;
-						const sent = await forwardvIeesUDP(rawData, serverSock, dnsRespHeader, addBytes, targetDns);
-						if (sent) dnsRespHeader = null;
-					}
+			const userConn = String(user.connection_type || "vless").toLowerCase();
+			if (isTrojan) {
+				if (!userConn.includes("trojan")) {
+					serverSock.close();
 					return;
 				}
-				if (respHeader) { try { serverSock.send(respHeader); } catch (e) { } }
-				try { serverSock.close(1000); } catch (e) { }
+			} else if (isShadowsocks) {
+				if (!userConn.includes("shadowsocks")) {
+					serverSock.close();
+					return;
+				}
+			} else {
+				if (!userConn.includes("vless") && userConn !== "vl" + "e" + "ss") {
+					serverSock.close();
+					return;
+				}
+			}
+			reqUUID = user.uuid;
+			if (request) {
+				const reqUrl = new URL(request.url);
+				const expectedPath = "/stream/PANEL_ZEUS/" + ((user.uuid || "").split("-")[4] || "default");
+				if (!reqUrl.pathname.startsWith(expectedPath)) {
+					serverSock.close();
+					return;
+				}
+			}
+			username = user.username;
+			validUUID = reqUUID;
+			let currentReqs = USER_REQ_CACHE.get(username) || 0;
+			USER_REQ_CACHE.set(username, currentReqs + 1);
+			if (!GLOBAL_TRAFFIC_CACHE.has(username)) {
+				GLOBAL_TRAFFIC_CACHE.set(username, 0);
+			}
+			if (isOfflineSet || serverSock.readyState !== WebSocket.OPEN) {
 				return;
 			}
-			if (port === 53 && !isShadowsocksProto && !isTrojanProto) {
-				isDnsQuery = true;
-				dnsRespHeader = respHeader;
-				const sent = await forwardvIeesUDP(rawData, serverSock, dnsRespHeader, addBytes, targetDns);
-				if (sent) dnsRespHeader = null;
-				return;
-			}
-			if (port === 25 || /^(0\.|127\.|10\.|192\.168\.|172\.(1[6-9]|2[0-9]|3[0-1])\.|169\.254\.|198\.1[89]\.|localhost$|::1|::ffff:|fd[0-9a-f]{2}:|fe80:)/i.test(addr)) {
+			if (user.is_active === 0) {
 				serverSock.close();
 				return;
 			}
-			const connectTCP = async (dataPayload = null, useFallback = true) => {
-				if (remoteConnWrapper.connectingPromise) { await remoteConnWrapper.connectingPromise; return; }
-				const task = (async () => {
-					let s = null;
-					let socks5 = getSelectedUserProxy(user?.user_socks5, request);
-					const panelHost = request ? new URL(request.url).hostname : null;
-					let loopBypassProxies = [];
-					if (!socks5 && panelHost && (addr === panelHost || addr.endsWith('.workers.dev') || addr.endsWith('.pages.dev'))) {
-						if (!GLOBAL_IPS_CACHE.loop_bypass || Date.now() - (GLOBAL_IPS_CACHE.loop_last_fetch || 0) > 3600000) {
-							GLOBAL_IPS_CACHE.loop_bypass = [];
-							let targetCountries = ["DE", "US", "GB", "NL", "FR"];
-							try {
-								const files = await getCachedRepoFile("vip-list");
-								if (files) {
-									const fetchedVips = files.filter(f => f.name.endsWith(".txt")).map(f => f.name.replace(".txt", "").toUpperCase());
-									if (fetchedVips.length > 0) targetCountries = fetchedVips;
-								}
-							} catch (e) { }
-							targetCountries = targetCountries.sort(() => 0.5 - Math.random()).slice(0, 3);
-							for (const fc of targetCountries) {
-								try {
-									const text = await getCachedRepoFile("proxy_vip/" + fc + ".txt");
-									if (text) {
-										const lines = text.split("\n").map(l => l.trim()).filter(l => l.length > 5);
-										if (lines.length > 0) { GLOBAL_IPS_CACHE.loop_bypass = GLOBAL_IPS_CACHE.loop_bypass.concat(lines); }
-									}
-								} catch (e) { }
-							}
-							if (GLOBAL_IPS_CACHE.loop_bypass.length > 0) { GLOBAL_IPS_CACHE.loop_last_fetch = Date.now(); }
-						}
-						if (GLOBAL_IPS_CACHE.loop_bypass && GLOBAL_IPS_CACHE.loop_bypass.length > 0) {
-							const shuffled = [...GLOBAL_IPS_CACHE.loop_bypass].sort(() => 0.5 - Math.random());
-							loopBypassProxies = shuffled.slice(0, 4);
-						}
+			const liveGb = (user.used_gb || 0) + ((GLOBAL_TRAFFIC_CACHE.get(username) || 0) / (1024 * 1024 * 1024));
+			if (user.limit_gb && liveGb >= user.limit_gb) {
+				serverSock.close();
+				return;
+			}
+			if (user.limit_req && user.used_req + (USER_REQ_CACHE.get(username) || 0) > user.limit_req) {
+				serverSock.close();
+				return;
+			}
+			if (user.start_on_first_connect === 1 && !user.first_connection_time && !GLOBAL_WRITE_LOCK.get(reqUUID + "_first_conn")) {
+				GLOBAL_WRITE_LOCK.set(reqUUID + "_first_conn", true);
+				const firstConnectNow = Date.now();
+				user.first_connection_time = firstConnectNow;
+				const updateFirstTask = async () => {
+					try {
+						await env.DB.prepare("UPDATE users SET first_connection_time = ? WHERE uuid = ?").bind(firstConnectNow, reqUUID).run();
+					} catch (e) {
+						GLOBAL_WRITE_LOCK.delete(reqUUID + "_first_conn");
 					}
-					if (loopBypassProxies.length > 0) {
-						const ac = new AbortController();
-						try {
-							s = await Promise.any(
-								loopBypassProxies.map(p =>
-									connectProxy(p, addr, port, dataPayload).then(sock => {
-										if (ac.signal.aborted) {
-											try { sock.close(); } catch (e) { }
-											throw new Error("Cancelled");
-										}
-										ac.abort();
-										return sock;
-									})
-								)
-							);
-						} catch (e) {
-							throw new Error("Loop bypass proxies failed");
-						}
-					} else if (socks5) {
-						try {
-							s = await connectProxy(socks5, addr, port, dataPayload);
-						} catch (proxyErr) {
-							if (user.auto_rotate_user_proxy === 1) {
-								const replaceTask = replaceBrokenProxy(user.username, env, socks5);
-								if (ctx) ctx.waitUntil(replaceTask);
-								else replaceTask.catch(() => { });
-							}
-							throw proxyErr;
-						}
-					} else {
-						try {
-							s = await connectDirect(addr, port, dataPayload, targetDoh);
-						} catch (directErr) {
-							if (useFallback) {
-								const IATA_LIST = ["FRA", "AMS", "LHR", "CDG", "VIE", "HEL", "CPH", "MAD", "BCN", "MXP", "FCO", "ZRH", "WAW", "PRG", "DUB", "SNN", "MAN", "GVA", "BRU", "LIS", "ATH", "SOF", "OTP", "TLL", "RIX", "VNO", "BUD", "BEG", "ZAG", "MUC", "HAM", "SIN", "NRT", "HKG", "TPE", "ICN", "DXB", "BOM", "DEL", "YYZ", "YUL", "YVR", "JFK", "EWR", "LAX", "SFO", "ORD", "MIA", "DFW", "SEA", "IAD", "ATL"];
-								let fallbackSuccess = false;
-								const shuffledIatas = IATA_LIST.slice().sort(() => 0.5 - Math.random());
-								const maxAttempts = 3;
-								for (let i = 0; i < maxAttempts && i < shuffledIatas.length; i++) {
-									const fallbackHost = shuffledIatas[i].toLowerCase() + ".proxyip.cmliussss.net";
-									try {
-										s = await connectDirect(fallbackHost, port, dataPayload, targetDoh);
-										fallbackSuccess = true;
-										break;
-									} catch (fallbackErr) { }
-								}
-								if (!fallbackSuccess) throw directErr;
-							} else { throw directErr; }
-						}
+				};
+				if (ctx) ctx.waitUntil(updateFirstTask());
+				else updateFirstTask();
+			}
+			if (user.expiry_days) {
+				let isTimeExpired = false;
+				if (user.start_on_first_connect === 1) {
+					if (user.first_connection_time) {
+						const expiryDate = new Date(user.first_connection_time + user.expiry_days * 24 * 60 * 60 * 1000);
+						if (new Date() > expiryDate) isTimeExpired = true;
 					}
-					remoteConnWrapper.socket = s;
-					let aeadCtx = null;
-					if (isShadowsocksProto && validUUID) {
-						const downSalt = crypto.getRandomValues(new Uint8Array(32));
-						const downKey = await SSCrypto.deriveSubkey(validUUID, downSalt);
-						aeadCtx = { key: downKey, nonce: new Uint8Array(12), salt: downSalt };
-					}
-					connectStreams(s, serverSock, respHeader, null, addBytes, aeadCtx).finally(() => closeSocketQuietly(serverSock));
-				})();
-				remoteConnWrapper.connectingPromise = task;
-				try {
-					await task;
-				} finally {
-					if (remoteConnWrapper.connectingPromise === task) { remoteConnWrapper.connectingPromise = null; }
+				} else if (user.created_at) {
+					const created = new Date(user.created_at);
+					const expiryDate = new Date(created.getTime() + user.expiry_days * 24 * 60 * 60 * 1000);
+					if (new Date() > expiryDate) isTimeExpired = true;
 				}
-			};
-			remoteConnWrapper.retryConnect = async () => connectTCP(null, false);
-			await connectTCP(rawData, true);
-		} catch (e) {
-			serverSock.close();
-		}
+				if (isTimeExpired) {
+					try {
+						await env.DB.prepare("UPDATE users SET is_active = 0, last_active = 0 WHERE uuid = ?").bind(reqUUID).run();
+					} catch (e) { }
+					serverSock.close();
+					return;
+				}
+			}
+			if (user.block_porn === 1 && user.block_ads === 1) {
+				targetDns = "94.140.14.15";
+				targetDoh = "https://family.adguard-dns.com/dns-query";
+			} else if (user.block_porn === 1) {
+				targetDns = "1.1.1.3";
+				targetDoh = "https://family.cloudflare-dns.com/dns-query";
+			} else if (user.block_ads === 1) {
+				targetDns = "94.140.14.14";
+				targetDoh = "https://dns.adguard-dns.com/dns-query";
+			}
+			if (clientIP && clientIP !== "unknown") {
+				let activeIps = {};
+				try {
+					activeIps = JSON.parse(user.active_ips || "{}");
+				} catch (e) { }
+				const now = Date.now();
+				for (const [ip, data] of Object.entries(activeIps)) {
+					const lastSeen = data && typeof data === "object" ? data.timestamp : data;
+					if (now - lastSeen > 180000) delete activeIps[ip];
+				}
+				let isNewIp = false;
+				if (!activeIps[clientIP]) {
+					const sortedIps = Object.keys(activeIps);
+					/* Bypassed: if (user.ip_limit && user.ip_limit > 0 && sortedIps.length >= user.ip_limit) { serverSock.close(); return; } */
+					activeIps[clientIP] = { timestamp: now, count: 1 };
+					isNewIp = true;
+				} else {
+					if (typeof activeIps[clientIP] === "object") {
+						activeIps[clientIP].timestamp = now;
+						activeIps[clientIP].count = (activeIps[clientIP].count || 0) + 1;
+					} else {
+						activeIps[clientIP] = { timestamp: now, count: 1 };
+					}
+				}
+				let lastDbW = GLOBAL_LAST_DB_WRITE.get(username) || 0;
+				let needIpWrite = isNewIp;
+				let needTimeWrite = (now - lastDbW > 900000);
+				if (needIpWrite || needTimeWrite) {
+					GLOBAL_LAST_ACTIVE_WRITE.set(username, now);
+					GLOBAL_LAST_DB_WRITE.set(username, now);
+					const updateTask = async () => {
+						try {
+							await env.DB.prepare("UPDATE users SET active_ips = ?, last_active = ? WHERE uuid = ?").bind(JSON.stringify(activeIps), now, reqUUID).run();
+						} catch (e) { }
+					};
+					if (ctx) ctx.waitUntil(updateTask());
+					else updateTask();
+				}
+			}
+			isHeaderParsed = true;
+			chunkBuffer = new Uint8Array(0);
+			let activeCount = ACTIVE_CONNECTIONS_COUNT.get(username) || 0;
+			ACTIVE_CONNECTIONS_COUNT.set(username, activeCount + 1);
+			let userIps = GLOBAL_ACTIVE_IPS.get(username);
+			if (!userIps) { userIps = new Map(); GLOBAL_ACTIVE_IPS.set(username, userIps); }
+			userIps.set(clientIP, (userIps.get(clientIP) || 0) + 1);
+			hasCountedAsActive = true;
+			try {
+				let isDomainAddress = (isTrojanProto && addrType === 3) || (isShadowsocksProto && addrType === 3) || (!isTrojanProto && !isShadowsocksProto && addrType === 2);
+				let isIpAddress = (isTrojanProto && (addrType === 1 || addrType === 4)) || (isShadowsocksProto && (addrType === 1 || addrType === 4)) || (!isTrojanProto && !isShadowsocksProto && (addrType === 1 || addrType === 3));
+				let sniffedDomain = null;
+				if (isIpAddress && port === 443 && rawData && rawData.byteLength > 43) {
+					try {
+						let pos = 43;
+						if (rawData[0] === 0x16 && rawData[5] === 0x01) {
+							const sessionIdLen = rawData[pos];
+							pos += 1 + sessionIdLen;
+							const cipherSuitesLen = (rawData[pos] << 8) | rawData[pos + 1];
+							pos += 2 + cipherSuitesLen;
+							const compMethodsLen = rawData[pos];
+							pos += 1 + compMethodsLen;
+							const extensionsLen = (rawData[pos] << 8) | rawData[pos + 1];
+							pos += 2;
+							const endPos = Math.min(pos + extensionsLen, rawData.byteLength);
+							while (pos + 4 <= endPos) {
+								const extType = (rawData[pos] << 8) | rawData[pos + 1];
+								const extLen = (rawData[pos + 2] << 8) | rawData[pos + 3];
+								pos += 4;
+								if (extType === 0x0000) {
+									let sniListLen = (rawData[pos] << 8) | rawData[pos + 1];
+									let sniPos = pos + 2;
+									if (rawData[sniPos] === 0x00) {
+										let sniLen = (rawData[sniPos + 1] << 8) | rawData[sniPos + 2];
+										sniffedDomain = new TextDecoder().decode(rawData.slice(sniPos + 3, sniPos + 3 + sniLen));
+										break;
+									}
+								}
+								pos += extLen;
+							}
+						}
+					} catch (e) {}
+				}
+				if (isIpAddress && !sniffedDomain && rawData && rawData.byteLength >= 14) {
+					try {
+						const sliceLen = Math.min(rawData.byteLength, 2048);
+						const headStr = TEXT_DECODER.decode(rawData.subarray(0, sliceLen));
+						if (/^(GET|POST|HEAD|PUT|DELETE|OPTIONS|CONNECT|PATCH)\s/i.test(headStr)) {
+							const hostMatch = headStr.match(/\r\n[Hh][Oo][Ss][Tt]:\s*([^\r\n:]+)/);
+							if (hostMatch && hostMatch[1]) {
+								const h = hostMatch[1].trim();
+								if (h && h.length < 256 && !h.includes(" ") && !h.includes("\0")) {
+									sniffedDomain = h;
+								}
+							}
+						}
+					} catch (e) {}
+				}
+				let checkDomain = isDomainAddress ? addr : sniffedDomain;
+				if (isIpAddress && sniffedDomain) {
+					addr = sniffedDomain;
+				}
+				if ((user.block_ads === 1 || user.block_porn === 1) && checkDomain && port !== 53 && !isIPv4(checkDomain) && !checkDomain.includes(":")) {
+					try {
+						const dnsCheck = await dohQuery(checkDomain, "A", targetDoh);
+						const isBlocked = dnsCheck.some((r) => r.data === "0.0.0.0" || r.data === "::" || r.data === "176.103.130.130" || r.data === "127.0.0.1");
+						if (isBlocked) {
+							serverSock.close();
+							return;
+						}
+						if (user.block_porn === 1) {
+							if (/^(www\.)?google\.[a-z.]+$/i.test(checkDomain)) {
+								addr = "forcesafesearch.google.com";
+							} else if (/^(www\.|m\.)?youtube\.com$/i.test(checkDomain)) {
+								addr = "restrict.youtube.com";
+							} else if (/^(www\.)?bing\.com$/i.test(checkDomain)) {
+								addr = "strict.bing.com";
+							} else if (/^(www\.)?duckduckgo\.com$/i.test(checkDomain)) {
+								addr = "safe.duckduckgo.com";
+							}
+						}
+					} catch (e) { }
+				}
+				if ((isTrojanProto && cmd === 3) || (!isTrojanProto && cmd === 2)) {
+					if (port === 53) {
+						isDnsQuery = true;
+						if (isTrojanProto) {
+							await forwardTrojanUDP(rawData, serverSock, addBytes, targetDns);
+						} else {
+							dnsRespHeader = respHeader;
+							const sent = await forwardvIeesUDP(rawData, serverSock, dnsRespHeader, addBytes, targetDns);
+							if (sent) dnsRespHeader = null;
+						}
+						return;
+					}
+					if (respHeader) { try { serverSock.send(respHeader); } catch (e) {} }
+					try { serverSock.close(1000); } catch (e) {}
+					return;
+				}
+				if (port === 53 && !isShadowsocksProto && !isTrojanProto) {
+					isDnsQuery = true;
+					dnsRespHeader = respHeader;
+					const sent = await forwardvIeesUDP(rawData, serverSock, dnsRespHeader, addBytes, targetDns);
+					if (sent) dnsRespHeader = null;
+					return;
+				}
+				if (port === 25 || /^(0\.|127\.|10\.|192\.168\.|172\.(1[6-9]|2[0-9]|3[0-1])\.|169\.254\.|198\.1[89]\.|localhost$|::1|::ffff:|fd[0-9a-f]{2}:|fe80:)/i.test(addr)) {
+					serverSock.close();
+					return;
+				}
+				const connectTCP = async (dataPayload = null, useFallback = true) => {
+					if (remoteConnWrapper.connectingPromise) {
+						await remoteConnWrapper.connectingPromise;
+						return;
+					}
+					const task = (async () => {
+						let s = null;
+						let socks5 = getSelectedUserProxy(user?.user_socks5, request);
+						const panelHost = request ? new URL(request.url).hostname : null;
+						let loopBypassProxies = [];
+						if (!socks5 && panelHost && (addr === panelHost || addr.endsWith('.workers.dev') || addr.endsWith('.pages.dev'))) {
+							if (!GLOBAL_IPS_CACHE.loop_bypass || Date.now() - (GLOBAL_IPS_CACHE.loop_last_fetch || 0) > 3600000) {
+								GLOBAL_IPS_CACHE.loop_bypass = [];
+								let targetCountries = ["DE", "US", "GB", "NL", "FR"];
+								try {
+									const files = await getCachedRepoFile("vip-list");
+									if (files) {
+										const fetchedVips = files.filter(f => f.name.endsWith(".txt")).map(f => f.name.replace(".txt", "").toUpperCase());
+										if (fetchedVips.length > 0) targetCountries = fetchedVips;
+									}
+								} catch(e) {}
+								targetCountries = targetCountries.sort(() => 0.5 - Math.random()).slice(0, 3);
+								for (const fc of targetCountries) {
+									try {
+										const text = await getCachedRepoFile("proxy_vip/" + fc + ".txt");
+										if (text) {
+											const lines = text.split("\n").map(l => l.trim()).filter(l => l.length > 5);
+											if (lines.length > 0) {
+												GLOBAL_IPS_CACHE.loop_bypass = GLOBAL_IPS_CACHE.loop_bypass.concat(lines);
+											}
+										}
+									} catch(e) {}
+								}
+								if (GLOBAL_IPS_CACHE.loop_bypass.length > 0) {
+									GLOBAL_IPS_CACHE.loop_last_fetch = Date.now();
+								}
+							}
+							if (GLOBAL_IPS_CACHE.loop_bypass && GLOBAL_IPS_CACHE.loop_bypass.length > 0) {
+								const shuffled = [...GLOBAL_IPS_CACHE.loop_bypass].sort(() => 0.5 - Math.random());
+								loopBypassProxies = shuffled.slice(0, 4);
+							}
+						}
+						if (loopBypassProxies.length > 0) {
+							const ac = new AbortController();
+							try {
+								s = await Promise.any(
+									loopBypassProxies.map(p => 
+										connectProxy(p, addr, port, dataPayload).then(sock => {
+											if (ac.signal.aborted) {
+												try { sock.close(); } catch(e) {}
+												throw new Error("Cancelled");
+											}
+											ac.abort();
+											return sock;
+										})
+									)
+								);
+							} catch (e) {
+								throw new Error("Loop bypass proxies failed");
+							}
+						} else if (socks5) {
+							try {
+								s = await connectProxy(socks5, addr, port, dataPayload);
+							} catch (proxyErr) {
+								if (user.auto_rotate_user_proxy === 1) {
+									const replaceTask = replaceBrokenProxy(user.username, env, socks5);
+									if (ctx) ctx.waitUntil(replaceTask);
+									else replaceTask.catch(() => { });
+								}
+								throw proxyErr;
+							}
+						} else {
+							try {
+								s = await connectDirect(addr, port, dataPayload, targetDoh);
+							} catch (directErr) {
+								if (useFallback) {
+									const IATA_LIST = ["FRA", "AMS", "LHR", "CDG", "VIE", "HEL", "CPH", "MAD", "BCN", "MXP", "FCO", "ZRH", "WAW", "PRG", "DUB", "SNN", "MAN", "GVA", "BRU", "LIS", "ATH", "SOF", "OTP", "TLL", "RIX", "VNO", "BUD", "BEG", "ZAG", "MUC", "HAM", "SIN", "NRT", "HKG", "TPE", "ICN", "DXB", "BOM", "DEL", "YYZ", "YUL", "YVR", "JFK", "EWR", "LAX", "SFO", "ORD", "MIA", "DFW", "SEA", "IAD", "ATL"];
+									let fallbackSuccess = false;
+									const shuffledIatas = IATA_LIST.slice().sort(() => 0.5 - Math.random());
+									const maxAttempts = 3;
+									for (let i = 0; i < maxAttempts && i < shuffledIatas.length; i++) {
+										const fallbackHost = shuffledIatas[i].toLowerCase() + ".proxyip.cmliussss.net";
+										try {
+											s = await connectDirect(fallbackHost, port, dataPayload, targetDoh);
+											fallbackSuccess = true;
+											break;
+										} catch (fallbackErr) { }
+									}
+									if (!fallbackSuccess) throw directErr;
+								} else {
+							throw directErr;
+						}
+					}
+				}
+				remoteConnWrapper.socket = s;
+				let aeadCtx = null;
+				if (isShadowsocksProto && validUUID) {
+					const downSalt = crypto.getRandomValues(new Uint8Array(32));
+					const downKey = await SSCrypto.deriveSubkey(validUUID, downSalt);
+					aeadCtx = { key: downKey, nonce: new Uint8Array(12), salt: downSalt };
+				}
+				connectStreams(s, serverSock, respHeader, null, addBytes, aeadCtx).finally(() => closeSocketQuietly(serverSock));
+			})();
+			remoteConnWrapper.connectingPromise = task;
+					try {
+						await task;
+					} finally {
+						if (remoteConnWrapper.connectingPromise === task) {
+							remoteConnWrapper.connectingPromise = null;
+						}
+					}
+				};
+				remoteConnWrapper.retryConnect = async () => connectTCP(null, false);
+				await connectTCP(rawData, true);
+			} catch (e) {
+				serverSock.close();
+			}
 	};
 	const handleWsError = (err) => {
 		if (wsFailed) return;
@@ -4292,7 +4392,10 @@ async function handlevIees(env, storedData = null, ctx = null, request = null) {
 		const size = event.data.byteLength || 0;
 		const nextBytes = wsQueueBytes + size;
 		const nextItems = wsQueueItems + 1;
-		if (nextBytes > UPSTREAM_QUEUE_MAX_BYTES || nextItems > UPSTREAM_QUEUE_MAX_ITEMS) { handleWsError(new Error("ws queue overflow")); return; }
+		if (nextBytes > UPSTREAM_QUEUE_MAX_BYTES || nextItems > UPSTREAM_QUEUE_MAX_ITEMS) {
+			handleWsError(new Error("ws queue overflow"));
+			return;
+		}
 		wsQueueBytes = nextBytes;
 		wsQueueItems = nextItems;
 		pushToChain(async () => {
@@ -4322,12 +4425,14 @@ async function handlevIees(env, storedData = null, ctx = null, request = null) {
 }
 let CF_USAGE_CACHE = null;
 let CF_USAGE_LAST_FETCH = 0;
-let CF_USAGE_CACHE_DATE = "";
+let CF_USAGE_CACHE_DATE = ""; 
 async function getCfUsage(env) {
 	if (!env.CF_API_TOKEN || !env.CF_ACCOUNT_ID) return { today: 0, total: 0, d1Reads: 0, d1Writes: 0 };
 	const nowTime = Date.now();
 	const todayStr = new Date().toISOString().split("T")[0];
-	if (CF_USAGE_CACHE && (nowTime - CF_USAGE_LAST_FETCH < 15000) && CF_USAGE_CACHE_DATE === todayStr) { return CF_USAGE_CACHE; }
+	if (CF_USAGE_CACHE && (nowTime - CF_USAGE_LAST_FETCH < 15000) && CF_USAGE_CACHE_DATE === todayStr) {
+		return CF_USAGE_CACHE;
+	}
 	try {
 		const now = new Date();
 		const startOfDay = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())).toISOString();
@@ -4351,7 +4456,7 @@ async function getCfUsage(env) {
 			method: "POST",
 			headers: { Authorization: "Bearer " + env.CF_API_TOKEN, "Content-Type": "application/json" },
 			body: JSON.stringify({ query: q }),
-			cache: "no-store"
+			cache: "no-store" 
 		});
 		const j = await res.json();
 		const acc = j?.data?.viewer?.accounts?.[0];
@@ -4377,14 +4482,26 @@ function convertToUint8Array(data) {
 	if (ArrayBuffer.isView(data)) return new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
 	return new Uint8Array(data || 0);
 }
+const dnsCache = new Map();
 async function resolveToIPv4(host) {
 	if (isIPv4(host)) return host;
+	if (dnsCache.has(host)) return dnsCache.get(host);
 	try {
-		const answers = await dohQuery(host, "A");
-		for (const ans of answers) {
-			if (ans.type === 1 && isIPv4(ans.data)) { return ans.data; }
+		const res = await fetch("https://cloudflare-dns.com/dns-query?name=" + encodeURIComponent(host) + "&type=A", {
+			headers: { "Accept": "application/dns-json" }
+		});
+		if (res.ok) {
+			const data = await res.json();
+			if (data.Answer) {
+				for (const ans of data.Answer) {
+					if (ans.type === 1 && isIPv4(ans.data)) {
+						dnsCache.set(host, ans.data);
+						return ans.data;
+					}
+				}
+			}
 		}
-	} catch (e) { }
+	} catch (e) {}
 	return host;
 }
 /*
@@ -4430,7 +4547,9 @@ function concatBytes(...chunkList) {
 }
 function closeSocketQuietly(socket) {
 	try {
-		if (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CLOSING) { socket.close(); }
+		if (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CLOSING) {
+			socket.close();
+		}
 	} catch (e) { }
 }
 async function dohQuery(domain, recordType, targetDoh = DOH_RESOLVER) {
@@ -4462,14 +4581,22 @@ async function dohQuery(domain, recordType, targetDoh = DOH_RESOLVER) {
 		query.set(qname, 12);
 		qview.setUint16(12 + qname.length, qtype);
 		qview.setUint16(12 + qname.length + 2, 1);
-		const response = await fetch(targetDoh, {
-			method: "POST",
-			headers: {
-				"Content-Type": "application/dns-message",
-				Accept: "application/dns-message",
-			},
-			body: query,
-		});
+		const ac = new AbortController();
+		const tid = setTimeout(() => ac.abort(), 2500);
+		let response;
+		try {
+			response = await fetch(targetDoh, {
+				method: "POST",
+				headers: {
+					"Content-Type": "application/dns-message",
+					Accept: "application/dns-message",
+				},
+				body: query,
+				signal: ac.signal,
+			});
+		} finally {
+			clearTimeout(tid);
+		}
 		if (!response.ok) return [];
 		const buf = new Uint8Array(await response.arrayBuffer());
 		const dv = new DataView(buf.buffer);
@@ -4483,7 +4610,10 @@ async function dohQuery(domain, recordType, targetDoh = DOH_RESOLVER) {
 				safe = 128;
 			while (p < buf.length && safe-- > 0) {
 				const len = buf[p];
-				if (len === 0) { if (!jumped) endPos = p + 1; break; }
+				if (len === 0) {
+					if (!jumped) endPos = p + 1;
+					break;
+				}
 				if ((len & 0xc0) === 0xc0) {
 					if (!jumped) endPos = p + 2;
 					p = ((len & 0x3f) << 8) | buf[p + 1];
@@ -4550,7 +4680,10 @@ function createUpstreamQueue({ getWriter, releaseWriter, retryConnect, closeConn
 	const settleCompletions = (completions, err = null) => {
 		if (!completions) return;
 		for (const comp of completions) {
-			if (comp) { if (err) comp.reject(err); else comp.resolve(); }
+			if (comp) {
+				if (err) comp.reject(err);
+				else comp.resolve();
+			}
 		}
 	};
 	const rejectQueued = (err) => {
@@ -4560,7 +4693,10 @@ function createUpstreamQueue({ getWriter, releaseWriter, retryConnect, closeConn
 		}
 	};
 	const compact = () => {
-		if (head > 32 && head * 2 >= chunks.length) { chunks = chunks.slice(head); head = 0; }
+		if (head > 32 && head * 2 >= chunks.length) {
+			chunks = chunks.slice(head);
+			head = 0;
+		}
 	};
 	const resolveIdle = () => {
 		if (queuedBytes || draining || !idleResolvers.length) return;
@@ -4651,7 +4787,10 @@ function createUpstreamQueue({ getWriter, releaseWriter, retryConnect, closeConn
 					if (activeCompletions === completions) activeCompletions = null;
 				}
 				batchCount++;
-				if (batchCount >= 16) { await Promise.resolve(); batchCount = 0; }
+				if (batchCount >= 16) {
+					await Promise.resolve();
+					batchCount = 0;
+				}
 			}
 		} catch (err) {
 			closed = true;
@@ -4720,7 +4859,9 @@ function createDownstreamSender(webSocket, headerData = null) {
 		const buffered = webSocket.bufferedAmount || 0;
 		if (buffered > 256 * 1024) {
 			currentPacketCap = Math.max(MIN_CAP, Math.floor(currentPacketCap / 2));
-		} else if (buffered < 32 * 1024) { currentPacketCap = Math.min(MAX_CAP, currentPacketCap * 2); }
+		} else if (buffered < 32 * 1024) {
+			currentPacketCap = Math.min(MAX_CAP, currentPacketCap * 2);
+		}
 	};
 	const sendRawChunk = async (chunk) => {
 		if (webSocket.readyState !== 1) throw new Error("ws.readyState is not open");
@@ -4803,7 +4944,9 @@ async function waitForBackpressure(ws) {
 async function connectStreams(remoteSocket, webSocket, headerData, retryFunc, onBytes, aeadCtx = null) {
 	let header = headerData,
 		hasData = false;
-	if (aeadCtx) { header = header ? concatBytes(aeadCtx.salt, header) : aeadCtx.salt; }
+	if (aeadCtx) {
+		header = header ? concatBytes(aeadCtx.salt, header) : aeadCtx.salt;
+	}
 	const downstreamSender = createDownstreamSender(webSocket, header);
 	header = null;
 	try {
@@ -4826,7 +4969,9 @@ async function connectStreams(remoteSocket, webSocket, headerData, retryFunc, on
 							if (encLen && encPayload) controller.enqueue(concatBytes(encLen, encPayload));
 							offset += sliceLen;
 						}
-					} else { controller.enqueue(chunk); }
+					} else {
+						controller.enqueue(chunk);
+					}
 				}
 			});
 			const writePromise = transformStream.readable.pipeTo(new WritableStream({
@@ -4858,11 +5003,13 @@ async function connectStreams(remoteSocket, webSocket, headerData, retryFunc, on
 						if (encLen && encPayload) await downstreamSender.send(concatBytes(encLen, encPayload));
 						offset += sliceLen;
 					}
-				} else { await downstreamSender.send(value); }
+				} else {
+					await downstreamSender.send(value);
+				}
 			}
 		} finally {
-			try { reader.cancel(); } catch (err) { }
-			try { reader.releaseLock(); } catch (err) { }
+			try { reader.cancel(); } catch (err) {}
+			try { reader.releaseLock(); } catch (err) {}
 		}
 	} finally {
 		await downstreamSender.flush();
@@ -4891,8 +5038,20 @@ function sha224Pure(message) {
 	function sigma1(x) { return rotateRight(6, x) ^ rotateRight(11, x) ^ rotateRight(25, x); }
 	function gamma0(x) { return rotateRight(7, x) ^ rotateRight(18, x) ^ (x >>> 3); }
 	function gamma1(x) { return rotateRight(17, x) ^ rotateRight(19, x) ^ (x >>> 10); }
-	const K = [0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5, 0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174, 0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da, 0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967, 0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85, 0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070, 0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3, 0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2];
-	let H = [0xc1059ed8, 0x367cd507, 0x3070dd17, 0xf70e5939, 0xffc00b31, 0x68581511, 0x64f98fa7, 0xbefa4fa4];
+	const K = [
+		0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
+		0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
+		0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
+		0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,
+		0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,
+		0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
+		0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
+		0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2
+	];
+	let H = [
+		0xc1059ed8, 0x367cd507, 0x3070dd17, 0xf70e5939,
+		0xffc00b31, 0x68581511, 0x64f98fa7, 0xbefa4fa4
+	];
 	const msgBytes = typeof message === 'string' ? new TextEncoder().encode(message) : message;
 	const bitLen = msgBytes.length * 8;
 	const newLen = (((msgBytes.length + 8) >> 6) + 1) << 6;
@@ -4903,8 +5062,12 @@ function sha224Pure(message) {
 	view.setUint32(newLen - 4, bitLen, false);
 	const W = new Uint32Array(64);
 	for (let i = 0; i < newLen; i += 64) {
-		for (let t = 0; t < 16; t++) { W[t] = view.getUint32(i + t * 4, false); }
-		for (let t = 16; t < 64; t++) { W[t] = (gamma1(W[t - 2]) + W[t - 7] + gamma0(W[t - 15]) + W[t - 16]) >>> 0; }
+		for (let t = 0; t < 16; t++) {
+			W[t] = view.getUint32(i + t * 4, false);
+		}
+		for (let t = 16; t < 64; t++) {
+			W[t] = (gamma1(W[t - 2]) + W[t - 7] + gamma0(W[t - 15]) + W[t - 16]) >>> 0;
+		}
 		let [a, b, c, d, e, f, g, h] = H;
 		for (let t = 0; t < 64; t++) {
 			const T1 = (h + sigma1(e) + choice(e, f, g) + K[t] + W[t]) >>> 0;
@@ -4928,34 +5091,6 @@ function sha224Pure(message) {
 		H[7] = (H[7] + h) >>> 0;
 	}
 	return H.slice(0, 7).map(w => w.toString(16).padStart(8, '0')).join('');
-}
-function filterQuicDns(dnsPayload) {
-	if (!dnsPayload || dnsPayload.byteLength < 12) return null;
-	const qdCount = (dnsPayload[4] << 8) | dnsPayload[5];
-	if (qdCount < 1) return null;
-	let offset = 12;
-	while (offset < dnsPayload.byteLength) {
-		const len = dnsPayload[offset++];
-		if (len === 0) break;
-		if ((len & 0xc0) === 0xc0) { offset++; break; }
-		if (offset + len > dnsPayload.byteLength) return null;
-		offset += len;
-	}
-	if (offset + 4 > dnsPayload.byteLength) return null;
-	const qType = (dnsPayload[offset] << 8) | dnsPayload[offset + 1];
-	if (qType === 65 || qType === 64) {
-		const respLen = offset + 4;
-		const resp = new Uint8Array(respLen);
-		resp[0] = dnsPayload[0];
-		resp[1] = dnsPayload[1];
-		resp[2] = 0x81;
-		resp[3] = 0x80;
-		resp[4] = 0x00;
-		resp[5] = 0x01;
-		resp.set(dnsPayload.subarray(12, respLen), 12);
-		return resp;
-	}
-	return null;
 }
 async function forwardTrojanUDP(udpChunk, webSocket, onBytes, dnsServer = "8.8.4.4") {
 	try {
@@ -4982,26 +5117,25 @@ async function forwardTrojanUDP(udpChunk, webSocket, onBytes, dnsServer = "8.8.4
 			if (data.byteLength < offset + 16) return;
 			headerAddrBytes = [addrType, ...data.slice(offset, offset + 16)];
 			offset += 16;
-		} else { return; }
+		} else {
+			return;
+		}
 		if (data.byteLength < offset + 4) return;
 		const port = (data[offset++] << 8) | data[offset++];
 		const length = (data[offset++] << 8) | data[offset++];
-		offset += 2;
+		offset += 2; 
 		if (data.byteLength < offset + length) return;
 		const dnsPayload = data.slice(offset, offset + length);
-		let rawResponse = filterQuicDns(dnsPayload);
-		if (!rawResponse) {
-			const response = await fetch(targetDoh, {
-				method: 'POST',
-				headers: {
-					'Accept': 'application/dns-message',
-					'Content-Type': 'application/dns-message'
-				},
-				body: dnsPayload
-			});
-			if (!response.ok) return;
-			rawResponse = new Uint8Array(await response.arrayBuffer());
-		}
+		const response = await fetch(targetDoh, {
+			method: 'POST',
+			headers: {
+				'Accept': 'application/dns-message',
+				'Content-Type': 'application/dns-message'
+			},
+			body: dnsPayload
+		});
+		if (!response.ok) return;
+		const rawResponse = new Uint8Array(await response.arrayBuffer());
 		if (typeof onBytes === "function") onBytes(rawResponse.byteLength);
 		if (webSocket.readyState !== WebSocket.OPEN) return;
 		const resLen = rawResponse.byteLength;
@@ -5031,19 +5165,16 @@ async function forwardvIeesUDP(udpChunk, webSocket, respHeader, onBytes, dnsServ
 		const length = (data[0] << 8) | data[1];
 		if (data.byteLength < 2 + length) return false;
 		const dnsPayload = data.slice(2, 2 + length);
-		let rawResponse = filterQuicDns(dnsPayload);
-		if (!rawResponse) {
-			const response = await fetch(targetDoh, {
-				method: 'POST',
-				headers: {
-					'Accept': 'application/dns-message',
-					'Content-Type': 'application/dns-message'
-				},
-				body: dnsPayload
-			});
-			if (!response.ok) return false;
-			rawResponse = new Uint8Array(await response.arrayBuffer());
-		}
+		const response = await fetch(targetDoh, {
+			method: 'POST',
+			headers: {
+				'Accept': 'application/dns-message',
+				'Content-Type': 'application/dns-message'
+			},
+			body: dnsPayload
+		});
+		if (!response.ok) return false;
+		const rawResponse = new Uint8Array(await response.arrayBuffer());
 		if (typeof onBytes === "function") onBytes(rawResponse.byteLength);
 		if (webSocket.readyState !== WebSocket.OPEN) return false;
 		const resLen = rawResponse.byteLength;
@@ -5129,9 +5260,15 @@ async function connectProxy(proxyStr, destAddr, destPort, initialData, useTls = 
 	const isHttp = normalized.toLowerCase().startsWith("http://") || normalized.toLowerCase().startsWith("https://");
 	const isSocks4 = normalized.toLowerCase().startsWith("socks4://");
 	let cleanStr = normalized.replace(/^(socks4|socks5|socks|http|https):\/\//i, "");
-	if (isHttp) { return await connectHttp(cleanStr, destAddr, destPort, initialData, useTls, reqHost); }
-	if (isSocks4) { return await connectSocks4(cleanStr, destAddr, destPort, initialData, useTls, reqHost); }
-	if (hasProtocol) { return await connectSocks5(cleanStr, destAddr, destPort, initialData, useTls, reqHost); }
+	if (isHttp) {
+		return await connectHttp(cleanStr, destAddr, destPort, initialData, useTls, reqHost);
+	}
+	if (isSocks4) {
+		return await connectSocks4(cleanStr, destAddr, destPort, initialData, useTls, reqHost);
+	}
+	if (hasProtocol) {
+		return await connectSocks5(cleanStr, destAddr, destPort, initialData, useTls, reqHost);
+	}
 	return await Promise.any([
 		connectSocks5(cleanStr, destAddr, destPort, initialData, useTls, reqHost),
 		connectHttp(cleanStr, destAddr, destPort, initialData, useTls, reqHost)
@@ -5167,7 +5304,9 @@ async function connectSocks4(proxyStr, destAddr, destPort, initialData, useTls =
 		}
 		await writer.write(req);
 		let res = await readWithTimeout(reader, 4000);
-		if (res.done || !res.value || res.value[0] !== 0x00 || res.value[1] !== 0x5a) { throw new Error("پـروکـسـی SOCKS4 وصل نشد یا اتصال را رد کرد"); }
+		if (res.done || !res.value || res.value[0] !== 0x00 || res.value[1] !== 0x5a) {
+			throw new Error("پـروکـسـی SOCKS4 وصل نشد یا اتصال را رد کرد");
+		}
 		if (useTls) {
 			writer.releaseLock();
 			reader.releaseLock();
@@ -5179,7 +5318,9 @@ async function connectSocks4(proxyStr, destAddr, destPort, initialData, useTls =
 			}
 			return tlsSocket;
 		}
-		if (initialData && initialData.byteLength > 0) { await writer.write(convertToUint8Array(initialData)); }
+		if (initialData && initialData.byteLength > 0) {
+			await writer.write(convertToUint8Array(initialData));
+		}
 		writer.releaseLock();
 		reader.releaseLock();
 		return socket;
@@ -5205,7 +5346,9 @@ function parseProxyConfig(proxyStr, defaultPort) {
 		if (colonIdx !== -1) {
 			user = authPart.substring(0, colonIdx);
 			pass = authPart.substring(colonIdx + 1);
-		} else { user = authPart; }
+		} else {
+			user = authPart;
+		}
 		auth = true;
 	}
 	if (remain.startsWith("[")) {
@@ -5219,7 +5362,9 @@ function parseProxyConfig(proxyStr, defaultPort) {
 		if (lastColon !== -1 && remain.indexOf(":") === lastColon) {
 			host = remain.substring(0, lastColon);
 			port = parseInt(remain.substring(lastColon + 1)) || defaultPort;
-		} else { host = remain; }
+		} else {
+			host = remain;
+		}
 	}
 	return { user, pass, host, port, auth };
 }
@@ -5248,7 +5393,9 @@ async function connectSocks5Attempt(socksStr, destAddr, destPort, initialData, u
 	try {
 		if (auth) {
 			await writer.write(new Uint8Array([0x05, 0x02, 0x00, 0x02]));
-		} else { await writer.write(new Uint8Array([0x05, 0x01, 0x00])); }
+		} else {
+			await writer.write(new Uint8Array([0x05, 0x01, 0x00]));
+		}
 		let res = await readBytes(2);
 		if (res.length < 2 || res[0] !== 0x05) throw new Error("پاسخ نامعتبر از سرور (پـروکـسـی SOCKS5 نیست یا خاموش است)");
 		const method = res[1];
@@ -5289,11 +5436,16 @@ async function connectSocks5Attempt(socksStr, destAddr, destPort, initialData, u
 		req[portOffset + 1] = destPort & 0xff;
 		await writer.write(req);
 		let connHead = await readBytes(4);
-		if (connHead.length < 4 || connHead[1] !== 0x00) { throw new Error("پـروکـسـی وصل شد اما دسترسی به اینترنت آزاد ندارد"); }
+		if (connHead.length < 4 || connHead[1] !== 0x00) {
+			throw new Error("پـروکـسـی وصل شد اما دسترسی به اینترنت آزاد ندارد");
+		}
 		const atyp = connHead[3];
 		if (atyp === 0x01) await readBytes(6);
 		else if (atyp === 0x04) await readBytes(18);
-		else if (atyp === 0x03) { let lenByte = await readBytes(1); if (lenByte.length > 0) await readBytes(lenByte[0] + 2); }
+		else if (atyp === 0x03) {
+			let lenByte = await readBytes(1);
+			if (lenByte.length > 0) await readBytes(lenByte[0] + 2);
+		}
 		if (useTls) {
 			writer.releaseLock();
 			reader.releaseLock();
@@ -5305,14 +5457,16 @@ async function connectSocks5Attempt(socksStr, destAddr, destPort, initialData, u
 			}
 			return tlsSocket;
 		}
-		if (initialData && initialData.byteLength > 0) { await writer.write(convertToUint8Array(initialData)); }
+		if (initialData && initialData.byteLength > 0) {
+			await writer.write(convertToUint8Array(initialData));
+		}
 		writer.releaseLock();
 		reader.releaseLock();
 		return socket;
 	} catch (e) {
-		try { writer.releaseLock(); } catch (err) { }
-		try { reader.releaseLock(); } catch (err) { }
-		try { socket.close(); } catch (err) { }
+		try { writer.releaseLock(); } catch (err) {}
+		try { reader.releaseLock(); } catch (err) {}
+		try { socket.close(); } catch (err) {}
 		throw e;
 	}
 }
@@ -5320,11 +5474,17 @@ async function connectSocks5(socksStr, destAddr, destPort, initialData, useTls =
 	try {
 		return await connectSocks5Attempt(socksStr, destAddr, destPort, initialData, useTls, reqHost);
 	} catch (firstErr) {
-		if (firstErr && firstErr.message && (firstErr.message.includes("نام کاربری یا رمز عبور") || firstErr.message.includes("پاسخ نامعتبر"))) { throw firstErr; }
+		if (firstErr && firstErr.message && (firstErr.message.includes("نام کاربری یا رمز عبور") || firstErr.message.includes("پاسخ نامعتبر"))) {
+			throw firstErr;
+		}
 		if (!isIPv4(destAddr) && !destAddr.includes(":")) {
 			const resolvedIp = await resolveToIPv4(destAddr);
 			if (resolvedIp && resolvedIp !== destAddr && isIPv4(resolvedIp)) {
-				try { return await connectSocks5Attempt(socksStr, resolvedIp, destPort, initialData, useTls, reqHost || destAddr); } catch (secondErr) { throw firstErr; }
+				try {
+					return await connectSocks5Attempt(socksStr, resolvedIp, destPort, initialData, useTls, reqHost || destAddr);
+				} catch (secondErr) {
+					throw firstErr;
+				}
 			}
 		}
 		throw firstErr;
@@ -5361,7 +5521,9 @@ async function connectHttp(proxyStr, destAddr, destPort, initialData, useTls = f
 				const match = resStr.match(/^HTTP\/\d\.\d\s+(\d+)/);
 				if (match && match[1] === "200") {
 					break;
-				} else { throw new Error("proxy_error_" + (match ? match[1] : "unknown")); }
+				} else {
+					throw new Error("proxy_error_" + (match ? match[1] : "unknown"));
+				}
 			}
 		}
 		if (useTls) {
@@ -5375,7 +5537,9 @@ async function connectHttp(proxyStr, destAddr, destPort, initialData, useTls = f
 			}
 			return tlsSocket;
 		}
-		if (initialData && initialData.byteLength > 0) { await writer.write(convertToUint8Array(initialData)); }
+		if (initialData && initialData.byteLength > 0) {
+			await writer.write(convertToUint8Array(initialData));
+		}
 		writer.releaseLock();
 		reader.releaseLock();
 		return socket;
@@ -8267,7 +8431,6 @@ ${COMMON_TOAST_HTML}
 					<button type="button" onclick="openTgInTelegram()" class="flex-1 py-2 bg-gradient-to-r from-sky-500 to-blue-600 hover:from-sky-600 hover:to-blue-700 text-white font-bold rounded-xl text-xs transition shadow-md shadow-sky-500/20 flex items-center justify-center gap-2 cursor-pointer">
 						<svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm4.64 6.8c-.15 1.58-.8 5.42-1.13 7.19-.14.75-.42 1-.68 1.03-.58.05-1.02-.38-1.58-.75-.88-.58-1.38-.94-2.23-1.5-.99-.65-.35-1.01.22-1.59.15-.15 2.71-2.48 2.76-2.69a.2.2 0 00-.05-.18c-.06-.05-.14-.03-.21-.02-.09.02-1.49.94-4.22 2.79-.4.27-.76.41-1.08.4-.36-.01-1.04-.2-1.55-.37-.63-.2-1.12-.31-1.08-.66.02-.18.27-.36.74-.55 2.92-1.27 4.86-2.11 5.83-2.51 2.78-1.16 3.35-1.36 3.73-1.37.08 0 .27.02.39.12.1.08.13.19.14.27-.01.06.01.24 0 .24z"/></svg>
 						<span>اتصال مستقیم در تلگرام</span>
-					</button>
 					<button type="button" id="tg-health-btn" onclick="testTgHealth()" class="px-4 py-2 bg-green-600 hover:bg-green-700 border border-green-600 text-white font-bold rounded-xl text-xs transition cursor-pointer shadow-sm">تست سلامت</button>
 				</div>
 			</div>
@@ -8968,7 +9131,7 @@ ${COMMON_TOAST_HTML}
 					body: JSON.stringify({
 						username: username, limit_gb: null, expiry_days: null, limit_req: null, ip_limit: null,
 						auto_reset_vol_days: 0, auto_reset_req_days: 0, frag_len: "", frag_int: "",
-						fingerprint: "unsafe", block_ads: 1, block_porn: 0, port: tlsPick + "," + nonTlsPick, tls: "on",
+						fingerprint: "unsafe", block_ads: 0, block_porn: 0, port: tlsPick + "," + nonTlsPick, tls: "on",
 						ips: ipsStr, ip_operator: "all|mixed", ip_count: 30, auto_rotate_ip: 1, rotate_time: 5,
 						user_socks5: null, user_proxy_iata: panelIso || null, auto_rotate_user_proxy: 0, connection_type: "vless", enable_direct: true
 					})
@@ -9114,7 +9277,7 @@ ${COMMON_TOAST_HTML}
 					body: JSON.stringify({
 						username: username, limit_gb: null, expiry_days: null, limit_req: null, ip_limit: null,
 						auto_reset_vol_days: 0, auto_reset_req_days: 0, frag_len: "", frag_int: "",
-						fingerprint: "unsafe", block_ads: 1, block_porn: 0, port: "443", tls: "on",
+						fingerprint: "unsafe", block_ads: 0, block_porn: 0, port: "443", tls: "on",
 						ips: ipsStr, ip_operator: "all|mixed", ip_count: 10, auto_rotate_ip: 1, rotate_time: 5,
 						user_socks5: userSocks5, auto_rotate_user_proxy: 1, connection_type: "vless", enable_direct: false
 					})
@@ -11289,49 +11452,81 @@ function downloadZeusSource() {
 		function getSubLink(username) { return window.location.origin + '/feed/' + encodeURIComponent(username); }
 		function getYamlSubLink(username) { return window.location.origin + '/yaml/' + encodeURIComponent(username); }
 		function getStatusLink(username) { return window.location.origin + '/status/' + encodeURIComponent(username); }
+		function copyTextToClipboard(text, successMsg, failMsg) {
+			function fallback() {
+				try {
+					var tempInput = document.createElement('textarea');
+					tempInput.value = text;
+					tempInput.style.position = 'fixed';
+					tempInput.style.left = '-9999px';
+					tempInput.style.top = '0';
+					document.body.appendChild(tempInput);
+					tempInput.focus();
+					tempInput.select();
+					var ok = document.execCommand('copy');
+					document.body.removeChild(tempInput);
+					if (ok) {
+						alert(successMsg || '✅ با موفقیت کپی شد!');
+					} else {
+						alert(failMsg || 'خطا در کپی کردن لینک!');
+					}
+				} catch (err) {
+					alert(failMsg || 'خطا در کپی کردن لینک!');
+				}
+			}
+			if (navigator.clipboard && navigator.clipboard.writeText) {
+				navigator.clipboard.writeText(text).then(() => {
+					alert(successMsg || '✅ با موفقیت کپی شد!');
+				}).catch(() => {
+					fallback();
+				});
+			} else {
+				fallback();
+			}
+		}
 		function copySubLink(encodedUsername) {
 			const username = decodeURIComponent(encodedUsername);
-			navigator.clipboard.writeText(getSubLink(username)).then(() => {
-				alert('✅ لینک ساب متنی با موفقیت کپی شد!');
-			}).catch(() => {
-				alert('خطا در کپی کردن لینک ساب!');
-			});
+			copyTextToClipboard(getSubLink(username), '✅ لینک ساب متنی با موفقیت کپی شد!', 'خطا در کپی کردن لینک ساب!');
 		}
 		function copyYamlSubLink(encodedUsername) {
 			const username = decodeURIComponent(encodedUsername);
-			navigator.clipboard.writeText(getYamlSubLink(username)).then(() => {
-				alert('✅ لینک ساب YAML با موفقیت کپی شد!');
-			}).catch(() => {
-				alert('خطا در کپی کردن لینک ساب!');
-			});
+			copyTextToClipboard(getYamlSubLink(username), '✅ لینک ساب YAML با موفقیت کپی شد!', 'خطا در کپی کردن لینک ساب!');
 		}
 		function toggleQrModal(show, text) {
 			const container = document.getElementById('qrcode-container');
-			if (show) {
+			if (show && container) {
 				container.innerHTML = '';
-				const qrCode = new QRCodeStyling({
-					width: 280,
-					height: 280,
-					data: text,
-					margin: 5,
-					qrOptions: { errorCorrectionLevel: 'L' },
-					dotsOptions: {
-						color: "#000000",
-						type: "square"
-					},
-					backgroundOptions: {
-						color: "#ffffff"
-					},
-					cornersSquareOptions: {
-						color: "#000000",
-						type: "square"
-					},
-					cornersDotOptions: {
-						color: "#000000",
-						type: "square"
+				try {
+					if (typeof QRCodeStyling !== 'undefined') {
+						const qrCode = new QRCodeStyling({
+							width: 280,
+							height: 280,
+							data: text,
+							margin: 5,
+							qrOptions: { errorCorrectionLevel: 'L' },
+							dotsOptions: {
+								color: "#000000",
+								type: "square"
+							},
+							backgroundOptions: {
+								color: "#ffffff"
+							},
+							cornersSquareOptions: {
+								color: "#000000",
+								type: "square"
+							},
+							cornersDotOptions: {
+								color: "#000000",
+								type: "square"
+							}
+						});
+						qrCode.append(container);
+					} else {
+						container.innerHTML = '<img src="https://api.qrserver.com/v1/create-qr-code/?size=280x280&data=' + encodeURIComponent(text) + '" class="mx-auto rounded shadow" alt="QR Code" />';
 					}
-				});
-				qrCode.append(container);
+				} catch (e) {
+					container.innerHTML = '<img src="https://api.qrserver.com/v1/create-qr-code/?size=280x280&data=' + encodeURIComponent(text) + '" class="mx-auto rounded shadow" alt="QR Code" />';
+				}
 			}
 			setModalState('qr-modal', show);
 		}
@@ -11946,7 +12141,7 @@ async function testUserSocksProxy() {
 				window.location.reload();
 			}
 		}
-const CURRENT_VERSION = '2.4.1';
+const CURRENT_VERSION = '2.4.2';
 const UPDATE_FIX = "constsCURRENT_VERSION='d.d.d'";
 		window.autoUpdateStatusCache = false;
 		async function checkAutoUpdateSetup() {
