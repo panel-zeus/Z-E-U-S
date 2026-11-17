@@ -1,1 +1,4 @@
-socks5://8tlunai3:zj2pbkkj4xtx@one-as.zeus-prx.tokenized.name:1181
+socks5://vw0rfrg7:ck9nv7xintoe@one-as.zeus-prx.tokenized.name:1185
+http://8tlunai3:zj2pbkkj4xtx@one-as.zeus-prx.tokenized.name:1181
+http://NYx:NYx@uo.404i.me:20708
+http://NYx:NYx@uo.404i.me:35260
