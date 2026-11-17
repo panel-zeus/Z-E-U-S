@@ -3120,7 +3120,19 @@ const SubscriptionService = {
 		});
 		links.push("vl" + "e" + "ss://" + user.uuid + "@0.0.0.0:1?encryption=none&security=none&type=ws&host=" + host + "&path=" + dynPath + "#" + encodeURIComponent(m1));
 		links.push("vl" + "e" + "ss://" + user.uuid + "@0.0.0.0:1?encryption=none&security=none&type=ws&host=" + host + "&path=" + dynPath + "#" + encodeURIComponent(m2));
-		const noise = ["# System Update Feed: OK", "# Sync Code: " + Math.random().toString(36).slice(2, 10), "# Version: 2.10.1", "# Description: Secure Node Configurations", ""].join("\n");
+		const subTitleB64 = "base64:" + btoa(unescape(encodeURIComponent("⚡@ZEUS_PANEL_BOT")));
+		const subWebPageUrl = "https://t.me/ZEUS_PANEL_BOT";
+		const noise = [
+			"#profile-title: " + subTitleB64,
+			"#profile-web-page-url: " + subWebPageUrl,
+			"#support-url: " + subWebPageUrl,
+			"#profile-update-interval: 12",
+			"# System Update Feed: OK",
+			"# Sync Code: " + Math.random().toString(36).slice(2, 10),
+			"# Version: 2.10.1",
+			"# Description: Secure Node Configurations",
+			""
+		].join("\n");
 		const plainContent = noise + links.join("\n");
 		const subContent = btoa(unescape(encodeURIComponent(plainContent)));
 		const downloadBytes = Math.floor((user.used_gb || 0) * 1073741824);
@@ -3144,6 +3156,12 @@ const SubscriptionService = {
 				"Access-Control-Allow-Origin": "*",
 				"Cache-Control": "no-store",
 				"Subscription-Userinfo": subUserInfo,
+				"Profile-Title": subTitleB64,
+				"Profile-Web-Page-Url": subWebPageUrl,
+				"Support-Url": subWebPageUrl,
+				"Content-Disposition": "inline; filename=\"⚡@ZEUS_PANEL_BOT.yaml\"; filename*=UTF-8''%E2%9A%A1%40ZEUS_PANEL_BOT.yaml",
+				"Profile-Update-Interval": "12",
+				"Content-Disposition": "inline; filename=\"⚡@ZEUS_PANEL_BOT\"; filename*=UTF-8''%E2%9A%A1%40ZEUS_PANEL_BOT",
 			},
 		});
 	},
@@ -3398,13 +3416,19 @@ const SubscriptionService = {
 			}
 		}
 		const subUserInfo = `upload=0; download=${downloadBytes}; total=${totalBytes}; expire=${expireTimestamp}`;
+		const subTitleB64 = "base64:" + btoa(unescape(encodeURIComponent("⚡@ZEUS_PANEL_BOT")));
+		const subWebPageUrl = "https://t.me/ZEUS_PANEL_BOT";
 		return new Response(yamlStr, {
 			headers: {
 				"Content-Type": "text/plain; charset=utf-8",
 				"Access-Control-Allow-Origin": "*",
 				"Cache-Control": "no-store",
 				"Subscription-Userinfo": subUserInfo,
-				"profile-update-interval": "12"
+				"Profile-Update-Interval": "12",
+				"Profile-Title": subTitleB64,
+				"Profile-Web-Page-Url": subWebPageUrl,
+				"Support-Url": subWebPageUrl,
+				"Content-Disposition": "inline; filename=\"⚡@ZEUS_PANEL_BOT.yaml\"; filename*=UTF-8''%E2%9A%A1%40ZEUS_PANEL_BOT.yaml",
 			}
 		});
 	}
@@ -8101,14 +8125,6 @@ const HTML_TEMPLATES = {
 					</label>
 				</div>
 				<div class="pt-4 border-t-2 border-gray-300 dark:border-zinc-700">
-					<button type="button" onclick="openPlacementModal()" class="w-full py-2.5 bg-transparent border-2 border-cyan-500 text-cyan-600 hover:bg-cyan-50 dark:border-cyan-500/80 dark:text-cyan-400 dark:hover:bg-cyan-900/20 font-bold rounded-md text-sm transition-all shadow-sm flex items-center justify-center gap-2">
-						تغییر ریجن پنل 🌐
-					</button>
-				</div>
-				<div class="pt-4 border-t-2 border-gray-300 dark:border-zinc-700">
-					<h4 class="text-sm font-bold mb-3 text-gray-800 dark:text-zinc-200">🔒 تغییر رمز عبور مدیریت</h4>
-					<div class="space-y-3">
-						<div>
 							<label class="block text-[11px] text-gray-500 dark:text-gray-400 font-medium mb-1">رمز عبور فعلی</label>
 							<input type="password" id="change-pwd-current" class="w-full px-3 py-2 bg-white dark:bg-amoled-input border border-gray-300 dark:border-amoled-border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-xs font-mono text-center">
 						</div>
@@ -11449,8 +11465,8 @@ function downloadZeusSource() {
 			loadPanelAds();
 		}
 	});
-		function getSubLink(username) { return window.location.origin + '/feed/' + encodeURIComponent(username); }
-		function getYamlSubLink(username) { return window.location.origin + '/yaml/' + encodeURIComponent(username); }
+		function getSubLink(username) { return window.location.origin + '/feed/' + encodeURIComponent(username) + '#%E2%9A%A1%40ZEUS_PANEL_BOT'; }
+		function getYamlSubLink(username) { return window.location.origin + '/yaml/' + encodeURIComponent(username) + '#%E2%9A%A1%40ZEUS_PANEL_BOT'; }
 		function getStatusLink(username) { return window.location.origin + '/status/' + encodeURIComponent(username); }
 		function copyTextToClipboard(text, successMsg, failMsg) {
 			function fallback() {
@@ -13513,11 +13529,11 @@ ${COMMON_TOAST_HTML}
 		function getHost() { return window.location.host; }
 		function copyvIeesConfig() { navigator.clipboard.writeText(getvIeesLink()).then(() => alert('✅ کـانفـیگ با موفقیت کپی شد!')); }
 		function copyTextSub() {
-			const link = window.location.protocol + '//' + getHost() + '/sub/' + encodeURIComponent(window.statusUser.username);
+			const link = window.location.protocol + '//' + getHost() + '/sub/' + encodeURIComponent(window.statusUser.username) + '#%E2%9A%A1%40ZEUS_PANEL_BOT';
 			navigator.clipboard.writeText(link).then(() => alert('✅ لینک ساب متنی کپی شد!'));
 		}
 		function copyYamlSub() {
-			const link = window.location.protocol + '//' + getHost() + '/yaml/' + encodeURIComponent(window.statusUser.username);
+			const link = window.location.protocol + '//' + getHost() + '/yaml/' + encodeURIComponent(window.statusUser.username) + '#%E2%9A%A1%40ZEUS_PANEL_BOT';
 			navigator.clipboard.writeText(link).then(() => alert('✅ لینک ساب YAML کپی شد!'));
 		}
 		function toggleQrModal(show, text) {
@@ -13561,7 +13577,7 @@ ${COMMON_TOAST_HTML}
 			}
 		}
 		function showSubQr() {
-			const link = window.location.protocol + '//' + getHost() + '/sub/' + encodeURIComponent(window.statusUser.username);
+			const link = window.location.protocol + '//' + getHost() + '/sub/' + encodeURIComponent(window.statusUser.username) + '#%E2%9A%A1%40ZEUS_PANEL_BOT';
 			toggleQrModal(true, link);
 		}
 		document.addEventListener('DOMContentLoaded', () => {

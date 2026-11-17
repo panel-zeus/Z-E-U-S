@@ -1,9 +1,15 @@
 [
   {
+    "name": "BG.txt"
+  },
+  {
     "name": "BR.txt"
   },
   {
     "name": "CA.txt"
+  },
+  {
+    "name": "CN.txt"
   },
   {
     "name": "CO.txt"
@@ -13,9 +19,6 @@
   },
   {
     "name": "DE.txt"
-  },
-  {
-    "name": "DK.txt"
   },
   {
     "name": "FI.txt"
@@ -30,13 +33,46 @@
     "name": "GL.txt"
   },
   {
+    "name": "HK.txt"
+  },
+  {
+    "name": "HR.txt"
+  },
+  {
+    "name": "IN.txt"
+  },
+  {
+    "name": "JP.txt"
+  },
+  {
+    "name": "KR.txt"
+  },
+  {
     "name": "MX.txt"
+  },
+  {
+    "name": "MY.txt"
+  },
+  {
+    "name": "NL.txt"
+  },
+  {
+    "name": "NZ.txt"
   },
   {
     "name": "PA.txt"
   },
   {
+    "name": "PL.txt"
+  },
+  {
     "name": "RO.txt"
+  },
+  {
+    "name": "SE.txt"
+  },
+  {
+    "name": "SG.txt"
   },
   {
     "name": "TH.txt"

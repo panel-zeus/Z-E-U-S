@@ -1,2 +1,1 @@
-http://NYx:NYx@nyx.404i.me:10883
-socks5://admw:admw@damdaran.humanity.us.ci:20267
+http://NYx:NYx@im.404i.codes:58914
