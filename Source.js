@@ -8125,6 +8125,14 @@ const HTML_TEMPLATES = {
 					</label>
 				</div>
 				<div class="pt-4 border-t-2 border-gray-300 dark:border-zinc-700">
+					<button type="button" onclick="openPlacementModal()" class="w-full py-2.5 bg-transparent border-2 border-cyan-500 text-cyan-600 hover:bg-cyan-50 dark:border-cyan-500/80 dark:text-cyan-400 dark:hover:bg-cyan-900/20 font-bold rounded-md text-sm transition-all shadow-sm flex items-center justify-center gap-2">
+						تغییر ریجن پنل 🌐
+					</button>
+				</div>
+				<div class="pt-4 border-t-2 border-gray-300 dark:border-zinc-700">
+					<h4 class="text-sm font-bold mb-3 text-gray-800 dark:text-zinc-200">🔒 تغییر رمز عبور مدیریت</h4>
+					<div class="space-y-3">
+						<div>
 							<label class="block text-[11px] text-gray-500 dark:text-gray-400 font-medium mb-1">رمز عبور فعلی</label>
 							<input type="password" id="change-pwd-current" class="w-full px-3 py-2 bg-white dark:bg-amoled-input border border-gray-300 dark:border-amoled-border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-xs font-mono text-center">
 						</div>
