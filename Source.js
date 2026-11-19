@@ -8168,6 +8168,9 @@ const HTML_TEMPLATES = {
 					</div>
 				</div>
 				<div class="pt-4 border-t-2 border-gray-300 dark:border-zinc-700">
+					<h4 class="text-sm font-bold mb-3 text-gray-800 dark:text-zinc-200">💾 پشتیبان‌گیری و بازیابی کاربران</h4>
+					<div class="grid grid-cols-2 gap-2.5">
+						<button type="button" onclick="exportUsersBackup()" class="py-2.5 bg-transparent border-2 border-green-500 text-green-600 hover:bg-green-50 dark:text-green-400 dark:border-green-500/60 dark:hover:bg-green-500/10 rounded-md text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-sm">
 							<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path></svg> پشتیبان گیری
 						</button>
 						<button type="button" onclick="triggerImportBackup()" class="py-2.5 bg-transparent border-2 border-blue-500 text-blue-600 hover:bg-blue-50 dark:text-blue-400 dark:border-blue-500/60 dark:hover:bg-blue-500/10 rounded-md text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-sm">
