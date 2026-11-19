@@ -1,12 +1,7 @@
-socks5://djjtoqrj:ntnmh4hmdg4d@two-us.zeus-prx.tokenized.name:5158
-socks5://mdrx2hzh:u9reazgajeni@two-us.zeus-prx.tokenized.name:5159
-socks5://zkic16wb:nxrzdsxwebt4@two-us.zeus-prx.tokenized.name:5157
-http://NYx:NYx@uo.404i.me:45210
-http://NYx:NYx@uo.404i.me:13025
 socks5://Talebi.config:Psiphon3@new-hypermarcket.nyc.boxd.sh:46762
 socks5://nvkemknh:z6MhVbMWtwHC@163.245.222.105:1080
+http://NYx:NYx@uo.404i.me:13025
 socks5://hl9h7g5y:x5e4fpd24vg9@one-us.zeus-prx.tokenized.name:5151
 socks5://32xwnd8p:41evdy4u8py2@one-us.zeus-prx.tokenized.name:5153
-socks5://kt8tcjaf:mn2z0a8bacnk@one-us.zeus-prx.tokenized.name:5155
 http://NYx:NYx@uo.404i.me:32618
 socks5://obi7tcky:v748o49z4wia@one-us.zeus-prx.tokenized.name:5152

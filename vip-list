@@ -1,6 +1,9 @@
 [
   {
-    "name": "AE.txt"
+    "name": "AL.txt"
+  },
+  {
+    "name": "AM.txt"
   },
   {
     "name": "AT.txt"
@@ -21,7 +24,10 @@
     "name": "CH.txt"
   },
   {
-    "name": "CN.txt"
+    "name": "CO.txt"
+  },
+  {
+    "name": "CU.txt"
   },
   {
     "name": "DE.txt"
@@ -33,7 +39,10 @@
     "name": "FR.txt"
   },
   {
-    "name": "GB.txt"
+    "name": "GL.txt"
+  },
+  {
+    "name": "GR.txt"
   },
   {
     "name": "HK.txt"
@@ -42,7 +51,16 @@
     "name": "ID.txt"
   },
   {
+    "name": "IE.txt"
+  },
+  {
     "name": "IL.txt"
+  },
+  {
+    "name": "IN.txt"
+  },
+  {
+    "name": "IQ.txt"
   },
   {
     "name": "IT.txt"
@@ -51,13 +69,43 @@
     "name": "JP.txt"
   },
   {
-    "name": "MY.txt"
+    "name": "KR.txt"
+  },
+  {
+    "name": "KW.txt"
+  },
+  {
+    "name": "MC.txt"
+  },
+  {
+    "name": "MD.txt"
+  },
+  {
+    "name": "MN.txt"
+  },
+  {
+    "name": "MX.txt"
+  },
+  {
+    "name": "NO.txt"
   },
   {
     "name": "NZ.txt"
   },
   {
+    "name": "PA.txt"
+  },
+  {
+    "name": "PL.txt"
+  },
+  {
+    "name": "QA.txt"
+  },
+  {
     "name": "RO.txt"
+  },
+  {
+    "name": "RU.txt"
   },
   {
     "name": "SG.txt"
@@ -67,6 +115,9 @@
   },
   {
     "name": "TR.txt"
+  },
+  {
+    "name": "UA.txt"
   },
   {
     "name": "US.txt"
