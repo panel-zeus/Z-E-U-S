@@ -472,7 +472,7 @@ const TG_HEADER_SIZE = 8;
 const TG_MAX_PAYLOAD = 1024 * 1024;
 const TG_MAX_BATCH_FRAMES = 4096;
 const TG_INITIAL_WINDOW = 4 * 1024 * 1024;
-const TG_DATA_CHUNK = 64 * 1024;
+const TG_DATA_CHUNK = 256 * 1024;
 const TG_MAX_WS_MESSAGE = 2 * 1024 * 1024;
 const TG_DCS = Object.freeze({
 	1: "149.154.175.50",
@@ -497,10 +497,11 @@ const TG_LIMITS = Object.freeze({
 	writeTimeout: 30000,
 });
 function tgEncodeFrame(type, streamId, payload = new Uint8Array()) {
-	if (streamId < 0 || streamId > 0xffffff || payload.length > TG_MAX_PAYLOAD) throw new Error("invalid frame");
-	const out = new Uint8Array(TG_HEADER_SIZE + payload.length);
+	const len = payload.length;
+	if (streamId < 0 || streamId > 0xffffff || len > TG_MAX_PAYLOAD) throw new Error("invalid frame");
+	const out = new Uint8Array(TG_HEADER_SIZE + len);
 	out[0] = type; out[1] = streamId >>> 16; out[2] = streamId >>> 8; out[3] = streamId;
-	new DataView(out.buffer).setUint32(4, payload.length);
+	out[4] = len >>> 24; out[5] = len >>> 16; out[6] = len >>> 8; out[7] = len;
 	out.set(payload, TG_HEADER_SIZE);
 	return out;
 }
@@ -533,25 +534,51 @@ class TgAesCtrStream {
 	constructor(keyBytes, ivBytes) {
 		if (keyBytes.length !== 32 || ivBytes.length !== 16) throw new Error("bad AES material");
 		this.keyPromise = crypto.subtle.importKey("raw", keyBytes, "AES-CTR", false, ["encrypt"]);
+		this.key = null;
 		this.counter = new Uint8Array(ivBytes);
 		this.spare = new Uint8Array();
 	}
 	async crypt(input) {
 		const src = input instanceof Uint8Array ? input : new Uint8Array(input);
-		const out = new Uint8Array(src.length); let pos = 0;
-		if (this.spare.length) {
-			const n = Math.min(this.spare.length, src.length);
-			for (let i = 0; i < n; i++) out[i] = src[i] ^ this.spare[i];
-			this.spare = this.spare.subarray(n); pos = n;
-		}
-		if (pos < src.length) {
-			const need = src.length - pos, blocks = Math.ceil(need / 16);
-			const zeros = new Uint8Array(blocks * 16);
-			const key = await this.keyPromise;
-			const ks = new Uint8Array(await crypto.subtle.encrypt({ name: "AES-CTR", counter: this.counter, length: 128 }, key, zeros));
+		const len = src.length;
+		if (len === 0) return new Uint8Array(0);
+		if (this.spare.length === 0) {
+			const key = this.key || (this.key = await this.keyPromise);
+			const rem = len & 15;
+			const blocks = (len + 15) >>> 4;
+			if (rem === 0) {
+				const enc = new Uint8Array(await crypto.subtle.encrypt({ name: "AES-CTR", counter: this.counter, length: 128 }, key, src));
+				tgAddBlocks(this.counter, blocks);
+				return enc;
+			}
+			const padded = new Uint8Array(blocks << 4);
+			padded.set(src, 0);
+			const enc = new Uint8Array(await crypto.subtle.encrypt({ name: "AES-CTR", counter: this.counter, length: 128 }, key, padded));
 			tgAddBlocks(this.counter, blocks);
-			for (let i = 0; i < need; i++) out[pos + i] = src[pos + i] ^ ks[i];
-			if (need < ks.length) this.spare = ks.subarray(need);
+			this.spare = enc.slice(len);
+			return enc.subarray(0, len);
+		}
+		const out = new Uint8Array(len);
+		const n = Math.min(this.spare.length, len);
+		for (let i = 0; i < n; i++) out[i] = src[i] ^ this.spare[i];
+		this.spare = this.spare.subarray(n);
+		if (n < len) {
+			const need = len - n;
+			const rem = need & 15;
+			const blocks = (need + 15) >>> 4;
+			const key = this.key || (this.key = await this.keyPromise);
+			if (rem === 0) {
+				const enc = new Uint8Array(await crypto.subtle.encrypt({ name: "AES-CTR", counter: this.counter, length: 128 }, key, src.subarray(n)));
+				tgAddBlocks(this.counter, blocks);
+				out.set(enc, n);
+			} else {
+				const padded = new Uint8Array(blocks << 4);
+				padded.set(src.subarray(n), 0);
+				const enc = new Uint8Array(await crypto.subtle.encrypt({ name: "AES-CTR", counter: this.counter, length: 128 }, key, padded));
+				tgAddBlocks(this.counter, blocks);
+				out.set(enc.subarray(0, need), n);
+				this.spare = enc.slice(need);
+			}
 		}
 		return out;
 	}
@@ -713,7 +740,7 @@ function trackTgProxyTraffic(env, ctx, bytes = 0, isReq = false, forceFlush = fa
 	if (!env || !env.DB) return;
 	if (TG_CACHED_BYTES <= 0 && TG_CACHED_REQS <= 0) return;
 	const now = Date.now();
-	const shouldFlush = forceFlush || (TG_CACHED_BYTES >= 2 * 1024 * 1024) || (TG_CACHED_REQS >= 10) || (now - TG_LAST_TRAFFIC_WRITE > 60000);
+	const shouldFlush = forceFlush || (TG_CACHED_BYTES >= 50 * 1024 * 1024) || (TG_CACHED_REQS >= 50) || (now - TG_LAST_TRAFFIC_WRITE > 60000);
 	if (!shouldFlush) return;
 	if (TG_TRAFFIC_LOCK) {
 		if (forceFlush) TG_PENDING_FLUSH = true;
@@ -972,6 +999,7 @@ class TgRelaySession {
 		return !stream.closed && !this.closed;
 	}
 	wakeDownlink() {
+		if (!this.downlinkWaiters.size) return;
 		const waiters = [...this.downlinkWaiters];
 		this.downlinkWaiters.clear();
 		for (const resolve of waiters) resolve();
@@ -979,15 +1007,21 @@ class TgRelaySession {
 	async readStream(stream) {
 		const reader = stream.socket.readable.getReader();
 		try {
-			while (await this.waitDownlink(stream)) {
+			while (!stream.closed && !this.closed) {
+				if (!this.downlinkRoom(stream) && !(await this.waitDownlink(stream))) break;
 				const { value, done } = await reader.read();
 				if (done || stream.closed || this.closed) break;
 				const bytes = value instanceof Uint8Array ? value : new Uint8Array(value);
 				trackTgProxyTraffic(this.env, this.ctx, bytes.length, false);
 				let offset = 0;
-				while (offset < bytes.length && await this.waitDownlink(stream)) {
-					const size = Math.min(bytes.length - offset, this.downlinkRoom(stream));
-					if (!size) continue;
+				while (offset < bytes.length && !stream.closed && !this.closed) {
+					let room = this.downlinkRoom(stream);
+					if (!room) {
+						if (!(await this.waitDownlink(stream))) break;
+						room = this.downlinkRoom(stream);
+						if (!room) continue;
+					}
+					const size = Math.min(bytes.length - offset, room);
 					const cost = size + TG_HEADER_SIZE + TG_LIMITS.itemCost;
 					stream.sendCredit -= size;
 					stream.sent.push({ remaining: size });
@@ -1748,7 +1782,17 @@ const Router = {
 					USER_REQ_CACHE.set(user.username, (USER_REQ_CACHE.get(user.username) || 0) + 1);
 				}
 			} catch (e) { }
-			return new Response(replacedHtml, { headers: { "Content-Type": "text/html; charset=utf-8" }, });
+			return new Response(replacedHtml, {
+				headers: {
+					"Content-Type": "text/html; charset=utf-8",
+					"Subscription-Userinfo": subResponse.headers.get("Subscription-Userinfo") || "",
+					"Profile-Title": subResponse.headers.get("Profile-Title") || "",
+					"Profile-Web-Page-Url": subResponse.headers.get("Profile-Web-Page-Url") || "",
+					"Support-Url": subResponse.headers.get("Support-Url") || "",
+					"Profile-Update-Interval": subResponse.headers.get("Profile-Update-Interval") || "12",
+					"Content-Disposition": subResponse.headers.get("Content-Disposition") || "",
+				},
+			});
 		} catch (err) {
 			return new Response("Error: " + err.message, { status: 500 });
 		}
@@ -1943,35 +1987,32 @@ const Router = {
 				return new Response(JSON.stringify({ success: true }), { headers: { "Content-Type": "application/json" } });
 			}
 		}
-		if (url.pathname === "/api/restart-core" && request.method === "POST") {
-			try {
-				GLOBAL_TRAFFIC_CACHE.clear();
-				ACTIVE_CONNECTIONS_COUNT.clear();
-				GLOBAL_ACTIVE_IPS.clear();
-				GLOBAL_LAST_ACTIVE_WRITE.clear();
-				GLOBAL_LAST_DB_WRITE.clear();
-				GLOBAL_WRITE_LOCK.clear();
-				REPO_FILE_CACHE.clear();
-				DNS_CACHE.clear();
-				USER_REQ_CACHE.clear();
-				LOGIN_ATTEMPTS.clear();
-				GLOBAL_REQ_COUNT = 0;
-				GLOBAL_LAST_REQ_WRITE = 0;
-				GLOBAL_IPS_CACHE = {};
-				GLOBAL_IPS_LAST_FETCH = 0;
-				cachedVipCountries = [];
-				lastVipCountriesFetch = 0;
-				CF_USAGE_CACHE = null;
-				CF_USAGE_LAST_FETCH = 0;
-				CF_USAGE_CACHE_DATE = "";
-				localLastAutoResetCheck = 0;
-				cachedPanelPassword = null;
-				return new Response(JSON.stringify({ success: true }), { headers: { "Content-Type": "application/json" } });
-			} catch (err) {
-				return new Response(JSON.stringify({ error: err.message }), { status: 500, headers: { "Content-Type": "application/json" } });
+		if ((url.pathname === "/api/restart-core" || url.pathname === "/api/update-panel") && request.method === "POST") {
+			if (url.pathname === "/api/restart-core") {
+				try {
+					GLOBAL_TRAFFIC_CACHE.clear();
+					ACTIVE_CONNECTIONS_COUNT.clear();
+					GLOBAL_ACTIVE_IPS.clear();
+					GLOBAL_LAST_ACTIVE_WRITE.clear();
+					GLOBAL_LAST_DB_WRITE.clear();
+					GLOBAL_WRITE_LOCK.clear();
+					REPO_FILE_CACHE.clear();
+					DNS_CACHE.clear();
+					USER_REQ_CACHE.clear();
+					LOGIN_ATTEMPTS.clear();
+					GLOBAL_REQ_COUNT = 0;
+					GLOBAL_LAST_REQ_WRITE = 0;
+					GLOBAL_IPS_CACHE = {};
+					GLOBAL_IPS_LAST_FETCH = 0;
+					cachedVipCountries = [];
+					lastVipCountriesFetch = 0;
+					CF_USAGE_CACHE = null;
+					CF_USAGE_LAST_FETCH = 0;
+					CF_USAGE_CACHE_DATE = "";
+					localLastAutoResetCheck = 0;
+					cachedPanelPassword = null;
+				} catch (err) { }
 			}
-		}
-		if (url.pathname === "/api/update-panel" && request.method === "POST") {
 			const body = await request.json().catch(() => ({}));
 			const dbTokenRow = await env.DB.prepare("SELECT value FROM settings WHERE key = 'cf_token'").first();
 			let currentToken = env.CF_API_TOKEN || (dbTokenRow ? dbTokenRow.value : null) || body.cf_token || null;
@@ -2088,13 +2129,45 @@ const Router = {
 				}
 				newBindings.push({ type: "secret_text", name: "CF_API_TOKEN", text: currentToken });
 				newBindings.push({ type: "secret_text", name: "CF_ACCOUNT_ID", text: currentAccountId });
+				let currentPlacement = null;
+				try {
+					const serviceRes = await fetch(`https://api.cloudflare.com/client/v4/accounts/${currentAccountId}/workers/services/${scriptName}`, { headers: cfHeaders });
+					if (serviceRes.ok) {
+						const serviceData = await serviceRes.json().catch(() => ({}));
+						const p = serviceData?.result?.default_environment?.script?.placement;
+						if (p) {
+							const mode = (p.mode || "").toLowerCase();
+							if (mode === "smart" || mode === "off") {
+								currentPlacement = { mode };
+							} else if (p.region) {
+								currentPlacement = { region: String(p.region).toLowerCase() };
+							} else if (mode === "targeted" && Array.isArray(p.target) && p.target.length > 0 && p.target[0].region) {
+								currentPlacement = { region: String(p.target[0].region).toLowerCase() };
+							}
+						}
+					}
+				} catch (e) { }
+				if (!currentPlacement) {
+					try {
+						const savedPlacementRow = await env.DB.prepare("SELECT value FROM settings WHERE key = 'worker_placement'").first();
+						const savedPlacement = savedPlacementRow?.value ? savedPlacementRow.value.trim().toLowerCase() : "";
+						if (savedPlacement === "smart" || savedPlacement === "off") {
+							currentPlacement = { mode: savedPlacement };
+						} else if (savedPlacement && savedPlacement !== "none" && savedPlacement !== "targeted") {
+							currentPlacement = { region: savedPlacement };
+						}
+					} catch (e) { }
+				}
 				const randomModName = `worker_${Math.random().toString(36).substring(2, 10)}.js`;
 				const metadata = {
 					main_module: randomModName,
 					compatibility_date: "2026-07-10",
-					compatibility_flags: ["nodejs_compat"],
+					compatibility_flags: ["nodejs_compat", "allow_eval_during_startup"],
 					bindings: newBindings,
 				};
+				if (currentPlacement) {
+					metadata.placement = currentPlacement;
+				}
 				const formData = new FormData();
 				formData.append("metadata", new Blob([JSON.stringify(metadata)], { type: "application/json" }), "metadata.json");
 				formData.append(randomModName, new Blob([newCode], { type: "application/javascript+module" }), randomModName);
@@ -2150,7 +2223,7 @@ const Router = {
 					} else if (targetRegion === "smart") {
 						placementConfig = { mode: "smart" };
 					} else if (targetRegion) {
-						placementConfig = { mode: "smart", region: targetRegion };
+						placementConfig = { region: targetRegion };
 					}
 					let currentConfigs = {};
 					let projectFound = false;
@@ -2210,6 +2283,38 @@ const Router = {
 						} catch (e) { }
 						throw new Error("خطای کلودفلر در تنظیم ریجن پیجز: " + cfErrorMsg);
 					}
+					try {
+						let redeployed = false;
+						const projInfoRes = await fetch(`https://api.cloudflare.com/client/v4/accounts/${currentAccountId}/pages/projects/${projectName}`, { headers: cfHeaders });
+						const projInfoData = await projInfoRes.json().catch(() => ({}));
+						const latestDepId = projInfoData?.result?.canonical_deployment?.id || projInfoData?.result?.latest_deployment?.id;
+						if (latestDepId) {
+							const retryRes = await fetch(`https://api.cloudflare.com/client/v4/accounts/${currentAccountId}/pages/projects/${projectName}/deployments/${latestDepId}/retry`, {
+								method: "POST",
+								headers: cfHeaders
+							});
+							if (retryRes.ok) redeployed = true;
+						}
+						if (!redeployed) {
+							const srcRes = await fetchWithFallback("Source.js?t=" + Date.now(), {
+								headers: { "User-Agent": "Mozilla/5.0", "Cache-Control": "no-cache" }
+							});
+							if (srcRes.ok) {
+								const rawSrc = await srcRes.text();
+								const obfSrc = obfuscateSourceForUpdate(rawSrc);
+								const redeployForm = new FormData();
+								redeployForm.append("manifest", JSON.stringify({}));
+								redeployForm.append("_routes.json", JSON.stringify({ version: 1, include: ["/*"], exclude: [] }));
+								redeployForm.append("_worker.js", new Blob([obfSrc], { type: "application/javascript" }), "_worker.js");
+								redeployForm.append("branch", "main");
+								await fetch(`https://api.cloudflare.com/client/v4/accounts/${currentAccountId}/pages/projects/${projectName}/deployments`, {
+									method: "POST",
+									headers: { Authorization: "Bearer " + currentToken },
+									body: redeployForm
+								});
+							}
+						}
+					} catch (e) { }
 					await env.DB.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('worker_placement', ?)").bind(targetRegion).run();
 					if (body.iso !== undefined) { await env.DB.prepare("UPDATE users SET user_proxy_iata = ? WHERE enable_direct = 1").bind(body.iso || null).run(); }
 					return new Response(JSON.stringify({ success: true, placement: targetRegion }), { headers: { "Content-Type": "application/json" } });
@@ -2261,7 +2366,7 @@ const Router = {
 				const metadata = {
 					main_module: mainModuleName,
 					compatibility_date: "2026-07-10",
-					compatibility_flags: ["nodejs_compat"],
+					compatibility_flags: ["nodejs_compat", "allow_eval_during_startup"],
 					bindings: newBindings,
 				};
 				if (targetRegion === "smart") {
@@ -3178,7 +3283,7 @@ const SubscriptionService = {
 				"Profile-Web-Page-Url": subWebPageUrl,
 				"Support-Url": subWebPageUrl,
 				"Profile-Update-Interval": "12",
-				"Content-Disposition": "inline; filename=\"⚡@ZEUS_PANEL_BOT\"; filename*=UTF-8''%E2%9A%A1%40ZEUS_PANEL_BOT",
+				"Content-Disposition": "inline; filename*=UTF-8''%E2%9A%A1%40ZEUS_PANEL_BOT; filename=\"@ZEUS_PANEL_BOT\"",
 			},
 		});
 	},
@@ -3442,7 +3547,14 @@ const SubscriptionService = {
 		const subUserInfo = `upload=0; download=${downloadBytes}; total=${totalBytes}; expire=${expireTimestamp}`;
 		const subTitleB64 = "base64:" + btoa(unescape(encodeURIComponent("⚡@ZEUS_PANEL_BOT")));
 		const subWebPageUrl = "https://t.me/ZEUS_PANEL_BOT";
-		return new Response(yamlStr, {
+		const yamlMeta = [
+			"#profile-title: " + subTitleB64,
+			"#profile-web-page-url: " + subWebPageUrl,
+			"#support-url: " + subWebPageUrl,
+			"#profile-update-interval: 12",
+			""
+		].join("\n");
+		return new Response(yamlMeta + yamlStr, {
 			headers: {
 				"Content-Type": "text/plain; charset=utf-8",
 				"Access-Control-Allow-Origin": "*",
@@ -3452,7 +3564,7 @@ const SubscriptionService = {
 				"Profile-Title": subTitleB64,
 				"Profile-Web-Page-Url": subWebPageUrl,
 				"Support-Url": subWebPageUrl,
-				"Content-Disposition": "inline; filename=\"⚡@ZEUS_PANEL_BOT.yaml\"; filename*=UTF-8''%E2%9A%A1%40ZEUS_PANEL_BOT.yaml",
+				"Content-Disposition": "inline; filename*=UTF-8''%E2%9A%A1%40ZEUS_PANEL_BOT; filename=\"@ZEUS_PANEL_BOT\"",
 			}
 		});
 	}
@@ -3547,23 +3659,31 @@ async function handlevIees(env, storedData = null, ctx = null, request = null) {
 	let validUUID = null;
 	let targetDns = "8.8.4.4";
 	let targetDoh = "https://cloudflare-dns.com/dns-query";
-	function addBytes(bytes) {
-		if (bytes <= 0) return;
-		if (!username) {
-			uncountedBytes += bytes;
-			return;
+	let localPendingBytes = 0;
+	function addBytes(bytes, force = false) {
+		if (bytes > 0) {
+			if (!username) {
+				uncountedBytes += bytes;
+				return;
+			}
+			localPendingBytes += bytes;
 		}
+		if (!username) return;
 		if (uncountedBytes > 0) {
-			bytes += uncountedBytes;
+			localPendingBytes += uncountedBytes;
 			uncountedBytes = 0;
 		}
-		let current = GLOBAL_TRAFFIC_CACHE.get(username) || 0;
-		GLOBAL_TRAFFIC_CACHE.set(username, current + bytes);
-		GLOBAL_LAST_ACTIVE_WRITE.set(username, Date.now());
+		if (!force && localPendingBytes < 262144) return;
+		if (localPendingBytes <= 0) return;
+		const flushed = localPendingBytes;
+		localPendingBytes = 0;
+		const now = Date.now();
+		const current = (GLOBAL_TRAFFIC_CACHE.get(username) || 0) + flushed;
+		GLOBAL_TRAFFIC_CACHE.set(username, current);
+		GLOBAL_LAST_ACTIVE_WRITE.set(username, now);
 		if (GLOBAL_WRITE_LOCK.get(username)) return;
-		let lastDbWrite = GLOBAL_LAST_DB_WRITE.get(username) || 0;
-		let now = Date.now();
-		let thresholdBytes = 500 * 1024 * 1024;
+		const lastDbWrite = GLOBAL_LAST_DB_WRITE.get(username) || 0;
+		const thresholdBytes = 500 * 1024 * 1024;
 		if ((current >= thresholdBytes && now - lastDbWrite > 180000) || (current > 0 && now - lastDbWrite > 900000)) {
 			GLOBAL_WRITE_LOCK.set(username, true);
 			let toCommit = GLOBAL_TRAFFIC_CACHE.get(username) || 0;
@@ -3598,6 +3718,7 @@ async function handlevIees(env, storedData = null, ctx = null, request = null) {
 		isOfflineSet = true;
 		const uname = username;
 		if (!uname) return;
+		addBytes(0, true);
 		let activeCount = ACTIVE_CONNECTIONS_COUNT.get(uname) || 0;
 		if (hasCountedAsActive) {
 			activeCount = Math.max(0, activeCount - 1);
@@ -3786,24 +3907,23 @@ async function handlevIees(env, storedData = null, ctx = null, request = null) {
 		}
 		return activeRemoteWriter;
 	};
-	const upstreamQueue = createUpstreamQueue({
-		getWriter: getRemoteWriter,
-		releaseWriter: releaseRemoteWriter,
-		retryConnect: async () => {
-			if (typeof remoteConnWrapper.retryConnect === "function") {
-				await remoteConnWrapper.retryConnect();
-			}
-		},
-		closeConnection: () => {
-			try {
-				remoteConnWrapper.socket?.close();
-			} catch (e) { }
-			closeSocketQuietly(serverSock);
-		},
-		name: "vIeesWSQueue",
-	});
+	const upstreamQueue = { clear() { }, async awaitEmpty() { } };
 	const writeToRemote = async (chunk, allowRetry = true) => {
-		return upstreamQueue.writeAndAwait(chunk, allowRetry);
+		const data = convertToUint8Array(chunk);
+		if (!data.byteLength) return true;
+		let writer = getRemoteWriter();
+		if (!writer) throw new Error("vIeesWSQueue: remote writer unavailable");
+		try {
+			await writer.write(data);
+		} catch (err) {
+			releaseRemoteWriter();
+			if (!allowRetry || typeof remoteConnWrapper.retryConnect !== "function") throw err;
+			await remoteConnWrapper.retryConnect();
+			writer = getRemoteWriter();
+			if (!writer) throw err;
+			await writer.write(data);
+		}
+		return true;
 	};
 	const processWsMessage = async (chunk) => {
 		const bytes = chunk.byteLength || 0;
@@ -4474,20 +4594,53 @@ async function handlevIees(env, storedData = null, ctx = null, request = null) {
 let CF_USAGE_CACHE = null;
 let CF_USAGE_LAST_FETCH = 0;
 let CF_USAGE_CACHE_DATE = "";
+let CF_RESOLVED_ACCOUNT_ID = "";
 async function getCfUsage(env) {
-	if (!env.CF_API_TOKEN || !env.CF_ACCOUNT_ID) return { today: 0, total: 0, d1Reads: 0, d1Writes: 0 };
 	const nowTime = Date.now();
 	const todayStr = new Date().toISOString().split("T")[0];
 	if (CF_USAGE_CACHE && (nowTime - CF_USAGE_LAST_FETCH < 15000) && CF_USAGE_CACHE_DATE === todayStr) {
 		return CF_USAGE_CACHE;
 	}
+	let apiToken = env.CF_API_TOKEN || "";
+	let accountId = env.CF_ACCOUNT_ID || CF_RESOLVED_ACCOUNT_ID || "";
+	if ((!apiToken || !accountId) && env.DB) {
+		try {
+			const rows = await env.DB.prepare("SELECT key, value FROM settings WHERE key IN ('cf_token', 'cf_account_id')").all();
+			for (const r of rows?.results || []) {
+				if (r.key === "cf_token" && !apiToken && r.value) apiToken = r.value.trim();
+				if (r.key === "cf_account_id" && !accountId && r.value) accountId = r.value.trim();
+			}
+		} catch (e) { }
+	}
+	if (!apiToken) {
+		CF_USAGE_CACHE = { today: 0, total: 0, d1Reads: 0, d1Writes: 0 };
+		CF_USAGE_LAST_FETCH = nowTime;
+		CF_USAGE_CACHE_DATE = todayStr;
+		return CF_USAGE_CACHE;
+	}
+	if (!accountId) {
+		try {
+			const accRes = await fetch("https://api.cloudflare.com/client/v4/accounts", {
+				headers: { Authorization: "Bearer " + apiToken }
+			});
+			const accData = await accRes.json().catch(() => ({}));
+			if (accData.success && accData.result && accData.result.length > 0) {
+				accountId = accData.result[0].id;
+				CF_RESOLVED_ACCOUNT_ID = accountId;
+				if (env.DB) {
+					await env.DB.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('cf_account_id', ?)").bind(accountId).run().catch(() => { });
+				}
+			}
+		} catch (e) { }
+	}
+	if (!accountId) return CF_USAGE_CACHE || { today: 0, total: 0, d1Reads: 0, d1Writes: 0 };
 	try {
 		const now = new Date();
 		const startOfDay = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())).toISOString();
 		const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString();
 		const q = `query {
 	  viewer {
-		accounts(filter: {accountTag: "${env.CF_ACCOUNT_ID}"}) {
+		accounts(filter: {accountTag: "${accountId}"}) {
 		  today: workersInvocationsAdaptive(limit: 10, filter: {datetime_geq: "${startOfDay}"}) {
 			sum { requests }
 		  }
@@ -4502,7 +4655,7 @@ async function getCfUsage(env) {
 	}`;
 		const res = await fetch("https://api.cloudflare.com/client/v4/graphql", {
 			method: "POST",
-			headers: { Authorization: "Bearer " + env.CF_API_TOKEN, "Content-Type": "application/json" },
+			headers: { Authorization: "Bearer " + apiToken, "Content-Type": "application/json" },
 			body: JSON.stringify({ query: q }),
 			cache: "no-store"
 		});
@@ -4894,91 +5047,39 @@ function createUpstreamQueue({ getWriter, releaseWriter, retryConnect, closeConn
 	};
 }
 function createDownstreamSender(webSocket, headerData = null) {
-	const MAX_CAP = 1024 * 1024;
-	const MIN_CAP = 64 * 1024;
-	let currentPacketCap = 512 * 1024;
-	const tailBytes = 512;
 	let header = headerData;
-	let pendingBuffer = null;
-	let pendingBytes = 0;
-	let flushPromise = null;
-	let microtaskQueued = false;
-	const adjustSmartBuffer = () => {
-		const buffered = webSocket.bufferedAmount || 0;
-		if (buffered > 256 * 1024) {
-			currentPacketCap = Math.max(MIN_CAP, Math.floor(currentPacketCap / 2));
-		} else if (buffered < 32 * 1024) {
-			currentPacketCap = Math.min(MAX_CAP, currentPacketCap * 2);
-		}
-	};
 	const sendRawChunk = async (chunk) => {
 		if (webSocket.readyState !== 1) throw new Error("ws.readyState is not open");
 		webSocket.send(chunk);
-		if (typeof webSocket.bufferedAmount === "number") {
-			while (webSocket.bufferedAmount > 4096 * 1024) {
+		if (webSocket.bufferedAmount > 4194304) {
+			while (webSocket.bufferedAmount > 2097152) {
 				if (webSocket.readyState !== 1) break;
 				await new Promise(r => setTimeout(r, 5));
 			}
 		}
 	};
-	const attachResponseHeader = (chunk) => {
-		if (!header) return chunk;
-		const merged = new Uint8Array(header.length + chunk.byteLength);
-		merged.set(header, 0);
-		merged.set(chunk, header.length);
-		header = null;
-		return merged;
-	};
-	const flush = async () => {
-		microtaskQueued = false;
-		while (flushPromise) await flushPromise;
-		if (!pendingBytes) return;
-		const output = pendingBuffer.subarray(0, pendingBytes);
-		adjustSmartBuffer();
-		pendingBytes = 0;
-		flushPromise = sendRawChunk(output).finally(() => {
-			flushPromise = null;
-		});
-		return flushPromise;
+	const sendChunk = async (data) => {
+		let chunk = convertToUint8Array(data);
+		if (!chunk.byteLength) return;
+		if (header) {
+			const merged = new Uint8Array(header.length + chunk.byteLength);
+			merged.set(header, 0);
+			merged.set(chunk, header.length);
+			header = null;
+			chunk = merged;
+		}
+		if (chunk.byteLength <= 524288) {
+			await sendRawChunk(chunk);
+		} else {
+			for (let offset = 0; offset < chunk.byteLength; offset += 524288) {
+				await sendRawChunk(chunk.subarray(offset, Math.min(offset + 524288, chunk.byteLength)));
+			}
+		}
 	};
 	return {
-		async sendDirect(data) {
-			let chunk = convertToUint8Array(data);
-			if (!chunk.byteLength) return;
-			chunk = attachResponseHeader(chunk);
-			await sendRawChunk(chunk);
-		},
-		async send(data) {
-			let chunk = convertToUint8Array(data);
-			if (!chunk.byteLength) return;
-			chunk = attachResponseHeader(chunk);
-			let offset = 0;
-			const totalBytes = chunk.byteLength;
-			while (offset < totalBytes) {
-				if (!pendingBytes && totalBytes - offset >= currentPacketCap) {
-					const sendBytes = Math.min(currentPacketCap, totalBytes - offset);
-					const view = offset || sendBytes !== totalBytes ? chunk.subarray(offset, offset + sendBytes) : chunk;
-					await sendRawChunk(view);
-					offset += sendBytes;
-					adjustSmartBuffer();
-					continue;
-				}
-				const copyBytes = Math.min(currentPacketCap - pendingBytes, totalBytes - offset);
-				if (!pendingBuffer) pendingBuffer = new Uint8Array(MAX_CAP);
-				pendingBuffer.set(chunk.subarray(offset, offset + copyBytes), pendingBytes);
-				pendingBytes += copyBytes;
-				offset += copyBytes;
-				if (pendingBytes >= currentPacketCap || currentPacketCap - pendingBytes < tailBytes) {
-					await flush();
-				} else if (!microtaskQueued) {
-					microtaskQueued = true;
-					queueMicrotask(() => {
-						if (pendingBytes) flush().catch(() => closeSocketQuietly(webSocket));
-					});
-				}
-			}
-		},
-		flush,
+		sendDirect: sendChunk,
+		send: sendChunk,
+		async flush() { },
 	};
 }
 async function waitForBackpressure(ws) {
@@ -4997,69 +5098,33 @@ async function connectStreams(remoteSocket, webSocket, headerData, retryFunc, on
 	}
 	const downstreamSender = createDownstreamSender(webSocket, header);
 	header = null;
+	const reader = remoteSocket.readable.getReader();
 	try {
-		let reader = remoteSocket.readable.getReader({ mode: "byob" });
-		let useBYOB = true;
-		reader.releaseLock();
-		if (useBYOB) {
-			const transformStream = new TransformStream({
-				async transform(chunk, controller) {
-					hasData = true;
-					if (typeof onBytes === "function") onBytes(chunk.byteLength);
-					if (aeadCtx) {
-						let offset = 0;
-						while (offset < chunk.byteLength) {
-							const sliceLen = Math.min(chunk.byteLength - offset, 16383);
-							const slice = chunk.subarray(offset, offset + sliceLen);
-							const lenBuf = new Uint8Array([(sliceLen >> 8) & 0xff, sliceLen & 0xff]);
-							const encLen = await SSCrypto.encryptChunk(aeadCtx.key, aeadCtx.nonce, lenBuf);
-							const encPayload = await SSCrypto.encryptChunk(aeadCtx.key, aeadCtx.nonce, slice);
-							if (encLen && encPayload) controller.enqueue(concatBytes(encLen, encPayload));
-							offset += sliceLen;
-						}
-					} else {
-						controller.enqueue(chunk);
-					}
+		while (true) {
+			const { done, value } = await reader.read();
+			if (done) break;
+			if (!value || value.byteLength === 0) continue;
+			hasData = true;
+			if (typeof onBytes === "function") onBytes(value.byteLength);
+			if (aeadCtx) {
+				let offset = 0;
+				while (offset < value.byteLength) {
+					const sliceLen = Math.min(value.byteLength - offset, 16383);
+					const slice = value.subarray(offset, offset + sliceLen);
+					const lenBuf = new Uint8Array([(sliceLen >> 8) & 0xff, sliceLen & 0xff]);
+					const encLen = await SSCrypto.encryptChunk(aeadCtx.key, aeadCtx.nonce, lenBuf);
+					const encPayload = await SSCrypto.encryptChunk(aeadCtx.key, aeadCtx.nonce, slice);
+					if (encLen && encPayload) await downstreamSender.send(concatBytes(encLen, encPayload));
+					offset += sliceLen;
 				}
-			});
-			const writePromise = transformStream.readable.pipeTo(new WritableStream({
-				async write(chunk) {
-					await downstreamSender.send(chunk);
-				}
-			}));
-			await remoteSocket.readable.pipeTo(transformStream.writable);
-			await writePromise;
+			} else {
+				await downstreamSender.send(value);
+			}
 		}
 	} catch (e) {
-		let reader = remoteSocket.readable.getReader();
-		try {
-			while (true) {
-				if (webSocket.bufferedAmount > 1024 * 1024) await waitForBackpressure(webSocket);
-				const { done, value } = await reader.read();
-				if (done) break;
-				if (!value || value.byteLength === 0) continue;
-				hasData = true;
-				if (typeof onBytes === "function") onBytes(value.byteLength);
-				if (aeadCtx) {
-					let offset = 0;
-					while (offset < value.byteLength) {
-						const sliceLen = Math.min(value.byteLength - offset, 16383);
-						const slice = value.subarray(offset, offset + sliceLen);
-						const lenBuf = new Uint8Array([(sliceLen >> 8) & 0xff, sliceLen & 0xff]);
-						const encLen = await SSCrypto.encryptChunk(aeadCtx.key, aeadCtx.nonce, lenBuf);
-						const encPayload = await SSCrypto.encryptChunk(aeadCtx.key, aeadCtx.nonce, slice);
-						if (encLen && encPayload) await downstreamSender.send(concatBytes(encLen, encPayload));
-						offset += sliceLen;
-					}
-				} else {
-					await downstreamSender.send(value);
-				}
-			}
-		} finally {
-			try { reader.cancel(); } catch (err) { }
-			try { reader.releaseLock(); } catch (err) { }
-		}
 	} finally {
+		try { reader.cancel(); } catch (err) { }
+		try { reader.releaseLock(); } catch (err) { }
 		await downstreamSender.flush();
 		closeSocketQuietly(webSocket);
 	}
@@ -10065,17 +10130,17 @@ async function executeRocketCreate() {
 		async function handleCoreAction(actionType, token = null) {
 			window.pendingCoreAction = actionType;
 			const isUpdate = actionType === 'update';
-			if (!isUpdate && !await customConfirm('آیا از ری استارت پـنـل مطمئن هستید؟ کاربران شما لحظه ای قطع خواهند شد.')) return;
+			if (!isUpdate && !token && !await customConfirm('آیا از ری استارت پـنـل مطمئن هستید؟ کاربران شما لحظه ای قطع خواهند شد.')) return;
 			if (isUpdate && !token) toggleUpdateModal(false);
 			const btn = isUpdate ? document.getElementById('update-toggle') : document.querySelector('button[title="ری استارت پـنـل"]');
 			if (btn) { btn.disabled = true; if (!isUpdate) btn.classList.add('animate-pulse'); }
-			if (isUpdate && !token) alert('در حال دریافت و اعمال آپدیت... لطفاً چند ثانیه صبر کنید.');
+			if (!token) alert(isUpdate ? 'در حال دریافت و اعمال آپدیت... لطفاً چند ثانیه صبر کنید.' : 'در حال ری‌استارت و دیپلوی مجدد پـنـل... لطفاً چند ثانیه صبر کنید.');
 			try {
 				const reqBody = token ? JSON.stringify({ cf_token: token }) : "{}";
 				const res = await fetch(isUpdate ? '/api/update-panel' : '/api/restart-core', {
 					method: 'POST',
 					headers: { 'Content-Type': 'application/json' },
-					body: isUpdate ? reqBody : undefined
+					body: reqBody
 				});
 				const data = await res.json();
 				if (res.status === 400 && data.error === "TOKEN_REQUIRED") {
@@ -10095,7 +10160,12 @@ async function executeRocketCreate() {
 							sessionStorage.setItem('zeus_last_update', Date.now());
 							window.location.href = window.location.pathname + '?t=' + Date.now();
 						}, 10000);
-					} else { alert('پـنـل ری استارت شد صفحه رفرش می شود.'); window.location.href = window.location.pathname + '?t=' + Date.now(); }
+					} else {
+						alert('پـنـل ری استارت و مجدداً دیپلوی شد. صفحه تا چند ثانیه دیگر رفرش می‌شود.');
+						setTimeout(() => {
+							window.location.href = window.location.pathname + '?t=' + Date.now();
+						}, 5000);
+					}
 				} else {
 					alert(isUpdate ? 'خطا در بروزرسانی. لطفاً با استفاده از " ربات" اقدام کنید.' : 'خطا در ری‌استارت پـنـل: ' + (data.error || 'ناشناخته'));
 					if (btn) { btn.disabled = false; if (!isUpdate) btn.classList.remove('animate-pulse'); }
@@ -11505,7 +11575,7 @@ function downloadZeusSource() {
 	});
 		function getSubLink(username) { return window.location.origin + '/feed/' + encodeURIComponent(username) + '#%E2%9A%A1%40ZEUS_PANEL_BOT'; }
 		function getYamlSubLink(username) { return window.location.origin + '/yaml/' + encodeURIComponent(username) + '#%E2%9A%A1%40ZEUS_PANEL_BOT'; }
-		function getStatusLink(username) { return window.location.origin + '/status/' + encodeURIComponent(username); }
+		function getStatusLink(username) { return window.location.origin + '/status/' + encodeURIComponent(username) + '#%E2%9A%A1%40ZEUS_PANEL_BOT'; }
 		function copyTextToClipboard(text, successMsg, failMsg) {
 			function fallback() {
 				try {
@@ -12328,6 +12398,10 @@ const UPDATE_FIX = "constsCURRENT_VERSION='d.d.d'";
 					if (titleEl) titleEl.innerText = 'تأیید توکن کلودفلر';
 					if (msgEl) msgEl.innerText = 'برای فعال‌سازی آپدیت خودکار، لطفاً توکن کلودفلر خود را وارد کنید.';
 					if (btn) btn.innerText = 'ثبت توکن و فعال‌سازی';
+				} else if (window.pendingCoreAction === 'restart') {
+					if (titleEl) titleEl.innerText = 'تأیید توکن برای ری‌استارت پـنـل';
+					if (msgEl) msgEl.innerText = 'توکن کلودفلر شما در این پـنـل ذخیره نشده است. برای ری‌استارت و دیپلوی مجدد، لطفاً توکن خود را وارد کنید.';
+					if (btn) btn.innerText = 'ثبت توکن و ری‌استارت پـنـل';
 				} else {
 					if (titleEl) titleEl.innerText = 'تنظیم توکن کلودفلر';
 					if (msgEl) msgEl.innerText = 'توکن کلودفلر شما در این پـنـل ذخیره نشده است. برای آپدیت دستی، لطفاً توکن خود را وارد کنید.';
