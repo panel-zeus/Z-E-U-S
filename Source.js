@@ -7,6 +7,200 @@ const GLOBAL_LAST_DB_WRITE = new Map();
 const GLOBAL_WRITE_LOCK = new Map();
 const DNS_CACHE = new Map();
 const REPO_FILE_CACHE = new Map();
+let APP_RELEASES_CACHE = { data: null, timestamp: 0 };
+const APP_RELEASES_CONFIG = [
+	{
+		repo: "patterniha/PattNG",
+		targets: [{ id: "android-pattng", match: [/(universal).*\.apk$/i, /(arm64-v8a).*\.apk$/i, /\.apk$/i] }]
+	},
+	{
+		repo: "2dust/v2rayNG",
+		targets: [{ id: "android-v2rayng", match: [/^(?!.*fdroid).*universal.*\.apk$/i, /(universal).*\.apk$/i, /(arm64-v8a).*\.apk$/i, /\.apk$/i] }]
+	},
+	{
+		repo: "Happ-proxy/happ-android",
+		targets: [{ id: "android-happ", match: [/\/happ\.apk$/i, /(universal).*\.apk$/i, /^(?!.*(arm|x86|tv)).*\.apk$/i, /\.apk$/i] }]
+	},
+	{
+		repo: "hiddify/hiddify-app",
+		targets: [
+			{ id: "android-hiddify", match: [/android.*universal.*\.apk$/i, /android.*\.apk$/i] },
+			{ id: "windows-hiddify", match: [/windows.*setup.*x64\.exe$/i, /windows.*x64\.exe$/i, /windows.*\.exe$/i] }
+		]
+	},
+	{
+		repo: "KaringX/karing",
+		targets: [
+			{ id: "android-karing", match: [/android.*universal.*\.apk$/i, /android.*arm64.*\.apk$/i, /android.*\.apk$/i, /\.apk$/i] },
+			{ id: "windows-karing", match: [/windows.*x64.*\.exe$/i, /windows.*x64.*\.zip$/i, /windows.*\.exe$/i, /windows.*\.zip$/i] }
+		]
+	},
+	{
+		repo: "ExclaveNetwork/Exclave",
+		targets: [{ id: "android-exclave", match: [/universal.*\.apk$/i, /arm64.*\.apk$/i, /\.apk$/i] }]
+	},
+	{
+		repo: "appshubcc/Bettbox",
+		targets: [{ id: "android-bettbox", match: [/^(?!.*lite).*universal.*\.apk$/i, /universal.*\.apk$/i, /arm64.*\.apk$/i, /\.apk$/i] }]
+	},
+	{
+		repo: "chen08209/FlClash",
+		targets: [{ id: "android-flclash", match: [/universal.*\.apk$/i, /arm64.*\.apk$/i, /\.apk$/i] }]
+	},
+	{
+		repo: "patterniha/PattN",
+		targets: [{ id: "windows-pattn", match: [/^(?!.*selfcontained).*windows-64\.zip$/i, /windows-64\.zip$/i, /windows.*64.*\.zip$/i] }]
+	},
+	{
+		repo: "2dust/v2rayN",
+		targets: [{ id: "windows-v2rayn", match: [/^(?!.*selfcontained).*windows-64\.zip$/i, /windows-64\.zip$/i, /windows.*64.*\.zip$/i] }]
+	},
+	{
+		repo: "Happ-proxy/happ-desktop",
+		targets: [{ id: "windows-happ", match: [/setup.*x64\.exe$/i, /x64\.exe$/i, /\.exe$/i] }]
+	},
+	{
+		repo: "clash-verge-rev/clash-verge-rev",
+		targets: [{ id: "windows-clashverge", match: [/x64-setup\.exe$/i, /x64.*\.exe$/i, /x64.*\.msi$/i] }]
+	}
+];
+const STORE_APPS_CONFIG = {
+	ios: [
+		{ id: "ios-v2box", trackId: "6446814690", url: "https://apps.apple.com/us/app/v2box-v2ray-client/id6446814690" },
+		{ id: "ios-streisand", trackId: "6450534064", url: "https://apps.apple.com/us/app/streisand/id6450534064" },
+		{ id: "ios-npv", trackId: "1629465476", url: "https://apps.apple.com/us/app/npv-tunnel/id1629465476" },
+		{ id: "ios-happ", trackId: "6504287215", url: "https://apps.apple.com/us/app/happ-proxy-utility/id6504287215" },
+		{ id: "ios-hiddify", trackId: "6596777532", url: "https://apps.apple.com/us/app/hiddify-proxy-vpn/id6596777532" },
+		{ id: "ios-clashmi", trackId: "6744321968", url: "https://apps.apple.com/us/app/clash-mi/id6744321968" }
+	],
+	android: [
+		{ id: "android-npv", pkg: "com.napsternetlabs.napsternetv", url: "https://play.google.com/store/apps/details?id=com.napsternetlabs.napsternetv" },
+		{ id: "android-v2box", pkg: "dev.hexasoftware.v2box", url: "https://play.google.com/store/apps/details?id=dev.hexasoftware.v2box" }
+	]
+};
+async function fetchStoreAppVersions() {
+	const results = {};
+	const headers = { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36", "Accept": "application/json,text/html" };
+	const iosTask = (async () => {
+		try {
+			const ids = STORE_APPS_CONFIG.ios.map(a => a.trackId).join(",");
+			const res = await fetch(`https://itunes.apple.com/lookup?id=${ids}&country=us`, { headers });
+			if (res.ok) {
+				const data = await res.json();
+				for (const item of data?.results || []) {
+					const cfg = STORE_APPS_CONFIG.ios.find(a => a.trackId === String(item.trackId));
+					if (cfg && item.version) {
+						const tag = String(item.version).startsWith("v") ? String(item.version) : "v" + item.version;
+						results[cfg.id] = { url: cfg.url, tag };
+					}
+				}
+			}
+		} catch (e) { }
+		const missingIos = STORE_APPS_CONFIG.ios.filter(a => !results[a.id]);
+		if (missingIos.length > 0) {
+			await Promise.allSettled(missingIos.map(async (cfg) => {
+				try {
+					const res = await fetch(`https://apps.apple.com/us/app/id${cfg.trackId}`, { headers });
+					if (!res.ok) return;
+					const html = await res.text();
+					const match = html.match(/"versionDisplay"\s*:\s*"([^"]+)"/) || html.match(/"softwareVersion"\s*:\s*"([^"]+)"/) || html.match(/Version\s+(\d+\.\d+(?:\.\d+)*)/i);
+					if (match && match[1]) {
+						const tag = match[1].startsWith("v") ? match[1] : "v" + match[1];
+						results[cfg.id] = { url: cfg.url, tag };
+					}
+				} catch (e) { }
+			}));
+		}
+	})();
+	const androidTasks = STORE_APPS_CONFIG.android.map(async (cfg) => {
+		try {
+			const res = await fetch(`https://play.google.com/store/apps/details?id=${cfg.pkg}&hl=en&gl=US`, { headers });
+			if (!res.ok) return;
+			const html = await res.text();
+			const match = html.match(/\[\[\["(\d+\.\d+(?:\.\d+)*(?:-[a-zA-Z0-9._]+)?)"\]\]/);
+			if (match && match[1]) {
+				const tag = match[1].startsWith("v") ? match[1] : "v" + match[1];
+				results[cfg.id] = { url: cfg.url, tag };
+			}
+		} catch (e) { }
+	});
+	await Promise.allSettled([iosTask, ...androidTasks]);
+	return results;
+}
+async function fetchRepoLatestAssets(repoCfg) {
+	const results = {};
+	const headers = { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36" };
+	try {
+		const atomRes = await fetch(`https://github.com/${repoCfg.repo}/releases.atom`, { headers });
+		if (!atomRes.ok) return results;
+		const atomText = await atomRes.text();
+		const tags = [];
+		const tagRegex = /\/releases\/tag\/([^"'\s<>]+)/g;
+		let m;
+		while ((m = tagRegex.exec(atomText)) !== null && tags.length < 2) {
+			const t = safeDecodeURI(m[1]);
+			if (t && !tags.includes(t)) tags.push(t);
+		}
+		for (const tag of tags) {
+			const pending = repoCfg.targets.filter(t => !results[t.id]);
+			if (pending.length === 0) break;
+			const assetsRes = await fetch(`https://github.com/${repoCfg.repo}/releases/expanded_assets/${encodeURIComponent(tag)}`, { headers });
+			if (!assetsRes.ok) continue;
+			const assetsHtml = await assetsRes.text();
+			const urls = [];
+			const hrefRegex = /href="(\/[^"]+\/releases\/download\/[^"]+)"/g;
+			let am;
+			while ((am = hrefRegex.exec(assetsHtml)) !== null) {
+				urls.push("https://github.com" + am[1]);
+			}
+			for (const target of pending) {
+				for (const rx of target.match) {
+					const found = urls.find(u => rx.test(u));
+					if (found) {
+						results[target.id] = { url: found, tag };
+						break;
+					}
+				}
+			}
+		}
+	} catch (e) { }
+	return results;
+}
+async function getLatestAppReleases(ctx) {
+	const now = Date.now();
+	if (APP_RELEASES_CACHE.data && (now - APP_RELEASES_CACHE.timestamp < 21600000)) {
+		return APP_RELEASES_CACHE.data;
+	}
+	const cache = caches.default;
+	const cacheReq = new Request("https://internal.zeus/app-releases-v4");
+	try {
+		const cachedRes = await cache.match(cacheReq);
+		if (cachedRes) {
+			const cachedData = await cachedRes.json();
+			APP_RELEASES_CACHE = { data: cachedData, timestamp: now };
+			return cachedData;
+		}
+	} catch (e) { }
+	const [settled, storeVersions] = await Promise.all([
+		Promise.allSettled(APP_RELEASES_CONFIG.map(cfg => fetchRepoLatestAssets(cfg))),
+		fetchStoreAppVersions()
+	]);
+	const merged = {};
+	for (const item of settled) {
+		if (item.status === "fulfilled" && item.value) {
+			Object.assign(merged, item.value);
+		}
+	}
+	Object.assign(merged, storeVersions);
+	if (Object.keys(merged).length > 0) {
+		APP_RELEASES_CACHE = { data: merged, timestamp: now };
+		const putTask = cache.put(cacheReq, new Response(JSON.stringify(merged), {
+			headers: { "Content-Type": "application/json", "Cache-Control": "public, max-age=21600" }
+		})).catch(() => { });
+		if (ctx && typeof ctx.waitUntil === "function") ctx.waitUntil(putTask);
+	}
+	return merged;
+}
 const USER_REQ_CACHE = new Map();
 const LOGIN_ATTEMPTS = new Map();
 let GLOBAL_REQ_COUNT = 0;
@@ -1924,8 +2118,17 @@ const Router = {
 			}
 		}
 		const authorized = await DbService.verifyApiAuth(request, env);
-		if (!authorized && url.pathname !== "/api/test-proxy" && !url.pathname.startsWith("/api/public-proxies")) {
+		if (!authorized && url.pathname !== "/api/test-proxy" && !url.pathname.startsWith("/api/public-proxies") && url.pathname !== "/api/app-releases") {
 			return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: { "Content-Type": "application/json; charset=utf-8" }, });
+		}
+		if (url.pathname === "/api/app-releases" && request.method === "GET") {
+			const releases = await getLatestAppReleases(ctx);
+			return new Response(JSON.stringify(releases), {
+				headers: {
+					"Content-Type": "application/json; charset=utf-8",
+					"Cache-Control": "no-store"
+				}
+			});
 		}
 		if (url.pathname === "/api/public-proxies" && request.method === "GET") {
 			const action = url.searchParams.get("action");
@@ -2316,7 +2519,7 @@ const Router = {
 						}
 					} catch (e) { }
 					await env.DB.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('worker_placement', ?)").bind(targetRegion).run();
-					if (body.iso !== undefined) { await env.DB.prepare("UPDATE users SET user_proxy_iata = ? WHERE enable_direct = 1").bind(body.iso || null).run(); }
+					if (body.iso !== undefined) { await env.DB.prepare("UPDATE users SET user_proxy_iata = ? WHERE enable_direct IS NULL OR enable_direct != 0").bind(body.iso || null).run(); }
 					return new Response(JSON.stringify({ success: true, placement: targetRegion }), { headers: { "Content-Type": "application/json" } });
 				};
 				if (isPages) { return await handlePagesPlacement(); }
@@ -2392,7 +2595,7 @@ const Router = {
 					throw new Error("خطای کلودفلر: " + cfErrorMsg);
 				}
 				await env.DB.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('worker_placement', ?)").bind(targetRegion).run();
-				if (body.iso !== undefined) { await env.DB.prepare("UPDATE users SET user_proxy_iata = ? WHERE enable_direct = 1").bind(body.iso || null).run(); }
+				if (body.iso !== undefined) { await env.DB.prepare("UPDATE users SET user_proxy_iata = ? WHERE enable_direct IS NULL OR enable_direct != 0").bind(body.iso || null).run(); }
 				return new Response(JSON.stringify({ success: true, placement: targetRegion }), { headers: { "Content-Type": "application/json" } });
 			} catch (err) {
 				return new Response(JSON.stringify({ error: err.message }), { status: 400, headers: { "Content-Type": "application/json" } });
@@ -3232,7 +3435,7 @@ const SubscriptionService = {
 						if (enableSS) {
 							const ssRemark = "ZEUS | " + proxy.flagEmoji + " | " + user.username + echSuffix;
 							const methodPass = btoa("aes-256-gcm:" + user.uuid);
-							let pluginOpts = "v2ray-plugin;mode=websocket;host=" + host + ";path=" + decodeURIComponent(proxy.currentDynPath) + (isTlsPort ? ";tls" : "");
+							let pluginOpts = "v2ray-plugin;mode=websocket;mux=0;host=" + host + ";path=" + decodeURIComponent(proxy.currentDynPath) + (isTlsPort ? ";tls" : "");
 							let pluginStr = encodeURIComponent(pluginOpts);
 							links.push("ss://" + methodPass + "@" + safeIp + ":" + portStr + "/?plugin=" + pluginStr + "#" + encodeURIComponent(ssRemark));
 						}
@@ -3502,8 +3705,6 @@ const SubscriptionService = {
 			"    proxies:\n" +
 			proxyNames.map((n) => "      - \"" + n + "\"\n").join("") + "\n";
 		yamlStr += "\nrules:\n" +
-			"  - DOMAIN-SUFFIX,discord.com,DIRECT\n" +
-			"  - DOMAIN-KEYWORD,discord,DIRECT\n" +
 			"  - GEOIP,LAN,DIRECT\n" +
 			"  - GEOIP,IR,DIRECT\n" +
 			"  - DOMAIN-SUFFIX,ir,DIRECT\n" +
@@ -3513,7 +3714,7 @@ const SubscriptionService = {
 			"bind-address: 127.0.0.1\n" +
 			"mode: rule\n" +
 			"log-level: info\n" +
-			"ipv6: false\n" +
+			"ipv6: true\n" +
 			"unified-delay: true\n" +
 			"external-controller: 127.0.0.1:9090\n" +
 			"secret: db9a32d3-fda9-41dc-bdef-0f1e9de2392a\n\n" +
@@ -6176,7 +6377,7 @@ links.push('vle' + 'ss://' + (user.uuid || '') + '@0.0.0.0:1?encryption=none&sec
 							if (enableSS) {
 								const ssRemark = "ZEUS | " + proxy.flagEmoji + " | " + user.username + echSuffix;
 								const methodPass = btoa("aes-256-gcm:" + (user.uuid || ''));
-								let pluginOpts = "v2ray-plugin;mode=websocket;host=" + host + ";path=" + decodeURIComponent(proxy.currentDynPath) + (isTlsPort ? ";tls" : "");
+								let pluginOpts = "v2ray-plugin;mode=websocket;mux=0;host=" + host + ";path=" + decodeURIComponent(proxy.currentDynPath) + (isTlsPort ? ";tls" : "");
 								let pluginStr = encodeURIComponent(pluginOpts);
 								links.push("ss://" + methodPass + "@" + safeIp + ":" + portStr + "/?plugin=" + pluginStr + "#" + encodeURIComponent(ssRemark));
 							}
@@ -6725,8 +6926,8 @@ const HTML_TEMPLATES = {
 							</svg>
 						</button>
 					</div>
-					<button id="mobile-menu-toggle" onclick="const c = document.getElementById('mobile-menu-collapse'); const i = document.getElementById('mobile-menu-icon'); c.classList.toggle('max-h-0'); c.classList.toggle('max-h-[500px]'); c.classList.toggle('opacity-0'); c.classList.toggle('opacity-100'); c.classList.toggle('mt-3'); i.classList.toggle('rotate-180');" class="md:hidden w-9 h-9 rounded-full flex items-center justify-center bg-gray-200/80 dark:bg-zinc-800/80 text-gray-600 dark:text-zinc-300 focus:outline-none transition-colors duration-200 shadow-sm border border-gray-300 dark:border-zinc-700 cursor-pointer flex-shrink-0">
-						<svg id="mobile-menu-icon" class="w-5 h-5 transition-transform duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+					<button id="mobile-menu-toggle" onclick="const c = document.getElementById('mobile-menu-collapse'); const i = document.getElementById('mobile-menu-icon'); c.classList.toggle('max-h-0'); c.classList.toggle('max-h-[500px]'); c.classList.toggle('opacity-0'); c.classList.toggle('opacity-100'); c.classList.toggle('mt-3'); i.classList.toggle('rotate-180');" class="md:hidden w-9 h-9 rounded-full flex items-center justify-center bg-blue-50 dark:bg-blue-950/60 hover:bg-blue-100 dark:hover:bg-blue-900/70 text-blue-600 dark:text-blue-400 focus:outline-none transition-all duration-200 shadow-[0_0_12px_rgba(59,130,246,0.35)] border-2 border-blue-500 dark:border-blue-500 cursor-pointer flex-shrink-0">
+						<svg id="mobile-menu-icon" class="w-5 h-5 transition-transform duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M19 9l-7 7-7-7"></path></svg>
 					</button>
 				</div>
 			</div>
@@ -7207,11 +7408,11 @@ const HTML_TEMPLATES = {
 		</p>
 		<div class="flex flex-col gap-3">
 			<div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
-				<a href="https://github.com/patterniha/PattNG/releases/latest" target="_blank" class="w-full py-3 bg-green-50/80 hover:bg-green-100 dark:bg-[#33FB1F]/10 dark:hover:bg-[#33FB1F]/20 text-green-700 dark:text-[#33FB1F] border border-green-500/50 dark:border-[#33FB1F]/50 font-black rounded-md text-xs transition duration-300 shadow-sm dark:shadow-[0_0_10px_rgba(51,251,31,0.2)] flex items-center justify-center gap-1.5">
+				<a data-app-id="android-pattng" href="https://github.com/patterniha/PattNG/releases/latest" target="_blank" class="w-full py-3 bg-green-50/80 hover:bg-green-100 dark:bg-[#33FB1F]/10 dark:hover:bg-[#33FB1F]/20 text-green-700 dark:text-[#33FB1F] border border-green-500/50 dark:border-[#33FB1F]/50 font-black rounded-md text-xs transition duration-300 shadow-sm dark:shadow-[0_0_10px_rgba(51,251,31,0.2)] flex items-center justify-center gap-1.5">
 					<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
 					اندروید (PattNG)
 				</a>
-				<a href="https://github.com/patterniha/PattN/releases/latest/download/PattN-windows-64.zip" target="_blank" class="w-full py-3 bg-green-50/80 hover:bg-green-100 dark:bg-[#33FB1F]/10 dark:hover:bg-[#33FB1F]/20 text-green-700 dark:text-[#33FB1F] border border-green-500/50 dark:border-[#33FB1F]/50 font-black rounded-md text-xs transition duration-300 shadow-sm dark:shadow-[0_0_10px_rgba(51,251,31,0.2)] flex items-center justify-center gap-1.5">
+				<a data-app-id="windows-pattn" href="https://github.com/patterniha/PattN/releases/latest/download/PattN-windows-64.zip" target="_blank" class="w-full py-3 bg-green-50/80 hover:bg-green-100 dark:bg-[#33FB1F]/10 dark:hover:bg-[#33FB1F]/20 text-green-700 dark:text-[#33FB1F] border border-green-500/50 dark:border-[#33FB1F]/50 font-black rounded-md text-xs transition duration-300 shadow-sm dark:shadow-[0_0_10px_rgba(51,251,31,0.2)] flex items-center justify-center gap-1.5">
 					<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
 					ویندوز (PattN)
 				</a>
@@ -8058,10 +8259,14 @@ const HTML_TEMPLATES = {
 						دریافت
 					</button>
 				</div>
+				<div class="mt-3 pt-2.5 border-t border-green-200/80 dark:border-green-800/40 text-center">
+					<span class="text-[10px] text-green-700/80 dark:text-green-400/80 font-medium leading-relaxed">
+						با تشکر از <a href="https://github.com/shahriar-nahavandi" target="_blank" rel="noopener noreferrer" class="font-bold text-green-700 dark:text-green-400 underline hover:opacity-80 transition">shahriar nahavandi</a> بابت اهدای اکثر پـروکـسـی‌های مخزن VIP
+					</span>
+				</div>
 			</div>
 			<div class="relative py-1 flex items-center justify-center">
 				<span class="absolute w-full border-t border-gray-200 dark:border-amoled-border"></span>
-				<span class="bg-white dark:bg-amoled-card px-3 text-[10px] font-bold text-gray-400 relative">یا اسکن عمومی</span>
 			</div>
 			<div class="p-4 bg-gray-50 dark:bg-amoled-input/50 border border-gray-200 dark:border-amoled-border rounded-md">
 				<h4 class="text-[13px] font-black text-gray-700 dark:text-zinc-300 mb-2 flex items-center gap-1.5">
@@ -11119,8 +11324,8 @@ async function executeRocketCreate() {
 				updateSubmitBtnState(isEditMode ? 'ذخیره تغییرات' : 'ایجاد کاربر', false);
 				return;
 			}
-			let panelIso = window.editingUserIata || null;
-			if (enable_direct && !panelIso) {
+			let panelIso = null;
+			if (enable_direct) {
 				try {
 					const pRes = await fetch('/api/placement-status');
 					if (pRes.ok) {
@@ -11448,11 +11653,48 @@ function downloadZeusSource() {
 		function openOnlineCounterWarning() { setModalState('online-counter-warning-modal', true); }
 		function closeConfigCountWarning() { setModalState('config-count-warning-modal', false); }
 		function openConfigCountWarning() { setModalState('config-count-warning-modal', true); }
+		let pattNgReleasesLoaded = false;
+		function applyPattNgReleases(data) {
+			if (!data || typeof data !== 'object') return;
+			document.querySelectorAll('#pattng-info-modal a[data-app-id]').forEach(el => {
+				const item = data[el.getAttribute('data-app-id')];
+				if (item && item.url) {
+					el.href = item.url;
+					if (item.tag) el.title = item.tag;
+				}
+			});
+		}
+		async function loadPattNgReleases() {
+			if (pattNgReleasesLoaded) return;
+			pattNgReleasesLoaded = true;
+			try {
+				const cached = localStorage.getItem('zeus_app_releases_v2');
+				if (cached) {
+					const parsed = JSON.parse(cached);
+					if (parsed && parsed.data && (Date.now() - parsed.ts < 7200000)) {
+						applyPattNgReleases(parsed.data);
+						return;
+					}
+				}
+			} catch (e) { }
+			try {
+				const res = await fetch('/api/app-releases');
+				if (!res.ok) return;
+				const data = await res.json();
+				if (data && Object.keys(data).length > 0) {
+					applyPattNgReleases(data);
+					try {
+						localStorage.setItem('zeus_app_releases_v2', JSON.stringify({ ts: Date.now(), data }));
+					} catch (e) { }
+				}
+			} catch (e) { }
+		}
 		function togglePattNgModal(show) {
 			const modal = document.getElementById('pattng-info-modal');
 			if (!modal) return;
 			const card = modal.querySelector('div');
 			if (show) {
+				loadPattNgReleases();
 				modal.classList.remove('opacity-0', 'pointer-events-none');
 				modal.classList.add('opacity-100', 'pointer-events-auto');
 				card.classList.remove('opacity-0', 'scale-95');
@@ -11681,11 +11923,7 @@ function downloadZeusSource() {
 			const username = decodeURIComponent(encodedUsername);
 			const link = getvIeesLink(username);
 			if (!link) return;
-			navigator.clipboard.writeText(link).then(() => {
-				alert('✅ کـانفـیگ با موفقیت کپی شد!');
-			}).catch(() => {
-				alert('خطا در کپی کردن کـانفـیگ!');
-			});
+			copyTextToClipboard(link, '✅ کـانفـیگ با موفقیت کپی شد!', 'خطا در کپی کردن کـانفـیگ!');
 		}
 function editUser(encodedUsername) {
 	const username = decodeURIComponent(encodedUsername);
@@ -12814,21 +13052,27 @@ if (selectedItems.length === 0) { alert('موردی در مخزن انتخاب �
 			setTimeout(() => {
 				if (typeof toggleInfoModal === 'function') { toggleInfoModal(true); }
 			}, 36000000);
-			setTimeout(() => {
-				const freeModal = document.getElementById('free-panel-warning-modal');
-				const freeCard = freeModal.querySelector('div');
-				freeModal.classList.remove('opacity-0', 'pointer-events-none');
-				freeModal.classList.add('opacity-100', 'pointer-events-auto');
-				freeCard.classList.remove('opacity-0', 'scale-95');
-				freeCard.classList.add('opacity-100', 'scale-100');
-				const oldBtn = document.getElementById('free-panel-close-btn');
-				if (oldBtn) { const newBtn = oldBtn.cloneNode(true); oldBtn.parentNode.replaceChild(newBtn, oldBtn); }
-				const btn = document.getElementById('free-panel-close-btn');
-				const prog = document.getElementById('free-panel-progress');
-				attachHoldButtonAction(btn, prog, 2000, () => {
-					closeFreePanelWarning();
-				});
-			}, 6000);
+			const hasFreeCookie = document.cookie.includes('zeus_free_warn=1');
+			const lastFreeWarning = parseInt(localStorage.getItem('zeus_free_warning_accepted') || '0', 10);
+			if (!hasFreeCookie && (Date.now() - lastFreeWarning >= 86400000)) {
+				setTimeout(() => {
+					const freeModal = document.getElementById('free-panel-warning-modal');
+					const freeCard = freeModal.querySelector('div');
+					freeModal.classList.remove('opacity-0', 'pointer-events-none');
+					freeModal.classList.add('opacity-100', 'pointer-events-auto');
+					freeCard.classList.remove('opacity-0', 'scale-95');
+					freeCard.classList.add('opacity-100', 'scale-100');
+					const oldBtn = document.getElementById('free-panel-close-btn');
+					if (oldBtn) { const newBtn = oldBtn.cloneNode(true); oldBtn.parentNode.replaceChild(newBtn, oldBtn); }
+					const btn = document.getElementById('free-panel-close-btn');
+					const prog = document.getElementById('free-panel-progress');
+					attachHoldButtonAction(btn, prog, 2000, () => {
+						document.cookie = 'zeus_free_warn=1; path=/; max-age=86400; SameSite=Lax';
+						try { localStorage.setItem('zeus_free_warning_accepted', String(Date.now())); } catch (e) { }
+						closeFreePanelWarning();
+					});
+				}, 6000);
+			}
 			const gfxToggle = document.getElementById('gfx-toggle');
 			if (gfxToggle) {
 				if (window.GLOBAL_GFX && !window.GLOBAL_GFX.startsWith('/*')) {
@@ -13551,7 +13795,7 @@ const WORKER_DONATE_URL = "https://si-491177.taile4bcbb.ts.net/donate";
 			</div>
 		</div>
 		<div class="border-t border-gray-100 dark:border-amoled-border pt-6 mt-6 relative z-10 w-full">
-			<button onclick="document.getElementById('software-downloads-content').classList.toggle('hidden'); document.getElementById('software-downloads-icon').classList.toggle('rotate-180');" class="w-full flex items-center justify-between text-sm font-bold mb-4 cursor-pointer focus:outline-none">
+			<button onclick="toggleSoftwareDownloads()" class="w-full flex items-center justify-between text-sm font-bold mb-4 cursor-pointer focus:outline-none">
 				<div class="flex items-center gap-2">
 					<svg class="w-4 h-4 text-pink-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
 					<span>دانلود نرم افزار ها</span>
@@ -13565,17 +13809,17 @@ const WORKER_DONATE_URL = "https://si-491177.taile4bcbb.ts.net/donate";
 						اندروید
 					</div>
 					<div class="flex flex-col gap-1.5">
-						<a href="https://github.com/patterniha/PattNG/releases/latest" target="_blank" class="flex justify-between items-center bg-white dark:bg-amoled-card border border-green-300 dark:border-green-800 px-2 py-1.5 rounded text-[10px] font-bold text-green-700 dark:text-green-400 hover:border-green-500 dark:hover:border-green-500 transition shadow-sm"><span>PattNG (پیشنهادی)</span><span class="text-green-500 text-[12px]">📥</span></a>
-						<a href="https://github.com/2dust/v2rayNG/releases/latest" target="_blank" class="flex justify-between items-center bg-white dark:bg-amoled-card border border-gray-100 dark:border-amoled-border px-2 py-1.5 rounded text-[10px] font-semibold text-gray-700 dark:text-zinc-300 hover:border-green-400 dark:hover:border-green-500 transition shadow-sm"><span>v2rayNG</span><span class="text-green-500 text-[12px]">📥</span></a>
-						<a href="https://github.com/Happ-proxy/happ-android/releases/latest/download/Happ.apk" target="_blank" class="flex justify-between items-center bg-white dark:bg-amoled-card border border-gray-100 dark:border-amoled-border px-2 py-1.5 rounded text-[10px] font-semibold text-gray-700 dark:text-zinc-300 hover:border-green-400 dark:hover:border-green-500 transition shadow-sm"><span>happ</span><span class="text-green-500 text-[12px]">📥</span></a>
-						<a href="https://github.com/hiddify/hiddify-app/releases/latest/download/Hiddify-Android-universal.apk" target="_blank" class="flex justify-between items-center bg-white dark:bg-amoled-card border border-gray-100 dark:border-amoled-border px-2 py-1.5 rounded text-[10px] font-semibold text-gray-700 dark:text-zinc-300 hover:border-green-400 dark:hover:border-green-500 transition shadow-sm"><span>Hiddify</span><span class="text-green-500 text-[12px]">📥</span></a>
-						<a href="https://play.google.com/store/apps/details?id=com.napsternetlabs.napsternetv" target="_blank" class="flex justify-between items-center bg-white dark:bg-amoled-card border border-gray-100 dark:border-amoled-border px-2 py-1.5 rounded text-[10px] font-semibold text-gray-700 dark:text-zinc-300 hover:border-green-400 dark:hover:border-green-500 transition shadow-sm"><span>Npv Tunnel</span><span class="text-green-500 text-[12px]">📥</span></a>
-						<a href="https://play.google.com/store/apps/details?id=dev.hexasoftware.v2box" target="_blank" class="flex justify-between items-center bg-white dark:bg-amoled-card border border-gray-100 dark:border-amoled-border px-2 py-1.5 rounded text-[10px] font-semibold text-gray-700 dark:text-zinc-300 hover:border-green-400 dark:hover:border-green-500 transition shadow-sm"><span>V2Box</span><span class="text-green-500 text-[12px]">📥</span></a>
-						<a href="https://github.com/KaringX/karing/releases/latest" target="_blank" class="flex justify-between items-center bg-white dark:bg-amoled-card border border-gray-100 dark:border-amoled-border px-2 py-1.5 rounded text-[10px] font-semibold text-gray-700 dark:text-zinc-300 hover:border-green-400 dark:hover:border-green-500 transition shadow-sm"><span>Karing</span><span class="text-green-500 text-[12px]">📥</span></a>
-						<a href="https://github.com/ExclaveNetwork/Exclave/releases/latest" target="_blank" class="flex justify-between items-center bg-white dark:bg-amoled-card border border-gray-100 dark:border-amoled-border px-2 py-1.5 rounded text-[10px] font-semibold text-gray-700 dark:text-zinc-300 hover:border-green-400 dark:hover:border-green-500 transition shadow-sm"><span>Exclave</span><span class="text-green-500 text-[12px]">📥</span></a>
+						<a data-app-id="android-pattng" href="https://github.com/patterniha/PattNG/releases/latest" target="_blank" class="flex justify-between items-center bg-white dark:bg-amoled-card border border-green-300 dark:border-green-800 px-2 py-1.5 rounded text-[10px] font-bold text-green-700 dark:text-green-400 hover:border-green-500 dark:hover:border-green-500 transition shadow-sm"><span>PattNG (پیشنهادی)</span><span class="text-green-500 text-[12px]">📥</span></a>
+						<a data-app-id="android-v2rayng" href="https://github.com/2dust/v2rayNG/releases/latest" target="_blank" class="flex justify-between items-center bg-white dark:bg-amoled-card border border-gray-100 dark:border-amoled-border px-2 py-1.5 rounded text-[10px] font-semibold text-gray-700 dark:text-zinc-300 hover:border-green-400 dark:hover:border-green-500 transition shadow-sm"><span>v2rayNG</span><span class="text-green-500 text-[12px]">📥</span></a>
+						<a data-app-id="android-happ" href="https://github.com/Happ-proxy/happ-android/releases/latest/download/Happ.apk" target="_blank" class="flex justify-between items-center bg-white dark:bg-amoled-card border border-gray-100 dark:border-amoled-border px-2 py-1.5 rounded text-[10px] font-semibold text-gray-700 dark:text-zinc-300 hover:border-green-400 dark:hover:border-green-500 transition shadow-sm"><span>happ</span><span class="text-green-500 text-[12px]">📥</span></a>
+						<a data-app-id="android-hiddify" href="https://github.com/hiddify/hiddify-app/releases/latest/download/Hiddify-Android-universal.apk" target="_blank" class="flex justify-between items-center bg-white dark:bg-amoled-card border border-gray-100 dark:border-amoled-border px-2 py-1.5 rounded text-[10px] font-semibold text-gray-700 dark:text-zinc-300 hover:border-green-400 dark:hover:border-green-500 transition shadow-sm"><span>Hiddify</span><span class="text-green-500 text-[12px]">📥</span></a>
+						<a data-app-id="android-npv" href="https://play.google.com/store/apps/details?id=com.napsternetlabs.napsternetv" target="_blank" class="flex justify-between items-center bg-white dark:bg-amoled-card border border-gray-100 dark:border-amoled-border px-2 py-1.5 rounded text-[10px] font-semibold text-gray-700 dark:text-zinc-300 hover:border-green-400 dark:hover:border-green-500 transition shadow-sm"><span>Npv Tunnel</span><span class="text-green-500 text-[12px]">📥</span></a>
+						<a data-app-id="android-v2box" href="https://play.google.com/store/apps/details?id=dev.hexasoftware.v2box" target="_blank" class="flex justify-between items-center bg-white dark:bg-amoled-card border border-gray-100 dark:border-amoled-border px-2 py-1.5 rounded text-[10px] font-semibold text-gray-700 dark:text-zinc-300 hover:border-green-400 dark:hover:border-green-500 transition shadow-sm"><span>V2Box</span><span class="text-green-500 text-[12px]">📥</span></a>
+						<a data-app-id="android-karing" href="https://github.com/KaringX/karing/releases/latest" target="_blank" class="flex justify-between items-center bg-white dark:bg-amoled-card border border-gray-100 dark:border-amoled-border px-2 py-1.5 rounded text-[10px] font-semibold text-gray-700 dark:text-zinc-300 hover:border-green-400 dark:hover:border-green-500 transition shadow-sm"><span>Karing</span><span class="text-green-500 text-[12px]">📥</span></a>
+						<a data-app-id="android-exclave" href="https://github.com/ExclaveNetwork/Exclave/releases/latest" target="_blank" class="flex justify-between items-center bg-white dark:bg-amoled-card border border-gray-100 dark:border-amoled-border px-2 py-1.5 rounded text-[10px] font-semibold text-gray-700 dark:text-zinc-300 hover:border-green-400 dark:hover:border-green-500 transition shadow-sm"><span>Exclave</span><span class="text-green-500 text-[12px]">📥</span></a>
 						<div class="h-px w-full bg-green-200 dark:bg-green-800/50 my-1"></div>
-						<a href="https://github.com/appshubcc/Bettbox/releases" target="_blank" class="flex justify-between items-center bg-white dark:bg-amoled-card border border-pink-300 dark:border-pink-800 px-2 py-1.5 rounded text-[10px] font-bold text-pink-700 dark:text-pink-400 hover:border-pink-500 dark:hover:border-pink-500 transition shadow-sm"><span>Bettbox (YAML)</span><span class="text-pink-500 text-[12px]">📥</span></a>
-						<a href="https://github.com/chen08209/FlClash/releases" target="_blank" class="flex justify-between items-center bg-white dark:bg-amoled-card border border-pink-300 dark:border-pink-800 px-2 py-1.5 rounded text-[10px] font-bold text-pink-700 dark:text-pink-400 hover:border-pink-500 dark:hover:border-pink-500 transition shadow-sm"><span>FlClash (YAML)</span><span class="text-pink-500 text-[12px]">📥</span></a>
+						<a data-app-id="android-bettbox" href="https://github.com/appshubcc/Bettbox/releases" target="_blank" class="flex justify-between items-center bg-white dark:bg-amoled-card border border-pink-300 dark:border-pink-800 px-2 py-1.5 rounded text-[10px] font-bold text-pink-700 dark:text-pink-400 hover:border-pink-500 dark:hover:border-pink-500 transition shadow-sm"><span>Bettbox (YAML)</span><span class="text-pink-500 text-[12px]">📥</span></a>
+						<a data-app-id="android-flclash" href="https://github.com/chen08209/FlClash/releases" target="_blank" class="flex justify-between items-center bg-white dark:bg-amoled-card border border-pink-300 dark:border-pink-800 px-2 py-1.5 rounded text-[10px] font-bold text-pink-700 dark:text-pink-400 hover:border-pink-500 dark:hover:border-pink-500 transition shadow-sm"><span>FlClash (YAML)</span><span class="text-pink-500 text-[12px]">📥</span></a>
 					</div>
 				</div>
 				<div class="bg-blue-50/50 dark:bg-blue-950/20 border border-blue-200/50 dark:border-blue-800/30 rounded-md p-2.5">
@@ -13584,13 +13828,13 @@ const WORKER_DONATE_URL = "https://si-491177.taile4bcbb.ts.net/donate";
 						ویندوز
 					</div>
 					<div class="flex flex-col gap-1.5">
-						<a href="https://github.com/patterniha/PattN/releases/latest/download/PattN-windows-64.zip" target="_blank" class="flex justify-between items-center bg-white dark:bg-amoled-card border border-blue-300 dark:border-blue-800 px-2 py-1.5 rounded text-[10px] font-bold text-blue-700 dark:text-blue-400 hover:border-blue-500 dark:hover:border-blue-500 transition shadow-sm"><span>PattN (پیشنهادی)</span><span class="text-blue-500 text-[12px]">📥</span></a>
-						<a href="https://github.com/2dust/v2rayN/releases/latest/download/v2rayN-windows-64.zip" target="_blank" class="flex justify-between items-center bg-white dark:bg-amoled-card border border-gray-100 dark:border-amoled-border px-2 py-1.5 rounded text-[10px] font-semibold text-gray-700 dark:text-zinc-300 hover:border-blue-400 dark:hover:border-blue-500 transition shadow-sm"><span>v2rayN</span><span class="text-blue-500 text-[12px]">📥</span></a>
-						<a href="https://github.com/Happ-proxy/happ-desktop/releases/latest/download/setup-Happ.x64.exe" target="_blank" class="flex justify-between items-center bg-white dark:bg-amoled-card border border-gray-100 dark:border-amoled-border px-2 py-1.5 rounded text-[10px] font-semibold text-gray-700 dark:text-zinc-300 hover:border-blue-400 dark:hover:border-blue-500 transition shadow-sm"><span>happ</span><span class="text-blue-500 text-[12px]">📥</span></a>
-						<a href="https://github.com/hiddify/hiddify-app/releases/latest/download/Hiddify-Windows-Setup-x64.exe" target="_blank" class="flex justify-between items-center bg-white dark:bg-amoled-card border border-gray-100 dark:border-amoled-border px-2 py-1.5 rounded text-[10px] font-semibold text-gray-700 dark:text-zinc-300 hover:border-blue-400 dark:hover:border-blue-500 transition shadow-sm"><span>Hiddify</span><span class="text-blue-500 text-[12px]">📥</span></a>
-						<a href="https://github.com/KaringX/karing/releases/latest" target="_blank" class="flex justify-between items-center bg-white dark:bg-amoled-card border border-gray-100 dark:border-amoled-border px-2 py-1.5 rounded text-[10px] font-semibold text-gray-700 dark:text-zinc-300 hover:border-blue-400 dark:hover:border-blue-500 transition shadow-sm"><span>Karing</span><span class="text-blue-500 text-[12px]">📥</span></a>
+						<a data-app-id="windows-pattn" href="https://github.com/patterniha/PattN/releases/latest/download/PattN-windows-64.zip" target="_blank" class="flex justify-between items-center bg-white dark:bg-amoled-card border border-blue-300 dark:border-blue-800 px-2 py-1.5 rounded text-[10px] font-bold text-blue-700 dark:text-blue-400 hover:border-blue-500 dark:hover:border-blue-500 transition shadow-sm"><span>PattN (پیشنهادی)</span><span class="text-blue-500 text-[12px]">📥</span></a>
+						<a data-app-id="windows-v2rayn" href="https://github.com/2dust/v2rayN/releases/latest/download/v2rayN-windows-64.zip" target="_blank" class="flex justify-between items-center bg-white dark:bg-amoled-card border border-gray-100 dark:border-amoled-border px-2 py-1.5 rounded text-[10px] font-semibold text-gray-700 dark:text-zinc-300 hover:border-blue-400 dark:hover:border-blue-500 transition shadow-sm"><span>v2rayN</span><span class="text-blue-500 text-[12px]">📥</span></a>
+						<a data-app-id="windows-happ" href="https://github.com/Happ-proxy/happ-desktop/releases/latest/download/setup-Happ.x64.exe" target="_blank" class="flex justify-between items-center bg-white dark:bg-amoled-card border border-gray-100 dark:border-amoled-border px-2 py-1.5 rounded text-[10px] font-semibold text-gray-700 dark:text-zinc-300 hover:border-blue-400 dark:hover:border-blue-500 transition shadow-sm"><span>happ</span><span class="text-blue-500 text-[12px]">📥</span></a>
+						<a data-app-id="windows-hiddify" href="https://github.com/hiddify/hiddify-app/releases/latest/download/Hiddify-Windows-Setup-x64.exe" target="_blank" class="flex justify-between items-center bg-white dark:bg-amoled-card border border-gray-100 dark:border-amoled-border px-2 py-1.5 rounded text-[10px] font-semibold text-gray-700 dark:text-zinc-300 hover:border-blue-400 dark:hover:border-blue-500 transition shadow-sm"><span>Hiddify</span><span class="text-blue-500 text-[12px]">📥</span></a>
+						<a data-app-id="windows-karing" href="https://github.com/KaringX/karing/releases/latest" target="_blank" class="flex justify-between items-center bg-white dark:bg-amoled-card border border-gray-100 dark:border-amoled-border px-2 py-1.5 rounded text-[10px] font-semibold text-gray-700 dark:text-zinc-300 hover:border-blue-400 dark:hover:border-blue-500 transition shadow-sm"><span>Karing</span><span class="text-blue-500 text-[12px]">📥</span></a>
 						<div class="h-px w-full bg-blue-200 dark:bg-blue-800/50 my-1"></div>
-						<a href="https://github.com/clash-verge-rev/clash-verge-rev/releases" target="_blank" class="flex justify-between items-center bg-white dark:bg-amoled-card border border-pink-300 dark:border-pink-800 px-2 py-1.5 rounded text-[10px] font-bold text-pink-700 dark:text-pink-400 hover:border-pink-500 dark:hover:border-pink-500 transition shadow-sm"><span>Clash Verge Rev (YAML)</span><span class="text-pink-500 text-[12px]">📥</span></a>
+						<a data-app-id="windows-clashverge" href="https://github.com/clash-verge-rev/clash-verge-rev/releases" target="_blank" class="flex justify-between items-center bg-white dark:bg-amoled-card border border-pink-300 dark:border-pink-800 px-2 py-1.5 rounded text-[10px] font-bold text-pink-700 dark:text-pink-400 hover:border-pink-500 dark:hover:border-pink-500 transition shadow-sm"><span>Clash Verge Rev (YAML)</span><span class="text-pink-500 text-[12px]">📥</span></a>
 					</div>
 				</div>
 				<div class="bg-gray-50/50 dark:bg-zinc-800/30 border border-gray-200/50 dark:border-gray-700/50 rounded-md p-2.5">
@@ -13599,13 +13843,13 @@ const WORKER_DONATE_URL = "https://si-491177.taile4bcbb.ts.net/donate";
 						آیفون
 					</div>
 					<div class="flex flex-col gap-1.5">
-						<a href="https://apps.apple.com/us/app/v2box-v2ray-client/id6446814690" target="_blank" class="flex justify-between items-center bg-white dark:bg-amoled-card border border-gray-100 dark:border-amoled-border px-2 py-1.5 rounded text-[10px] font-semibold text-gray-700 dark:text-zinc-300 hover:border-gray-400 dark:hover:border-gray-500 transition shadow-sm"><span>V2Box</span><span class="text-gray-500 text-[12px]">📥</span></a>
-						<a href="https://apps.apple.com/us/app/streisand/id6450534064" target="_blank" class="flex justify-between items-center bg-white dark:bg-amoled-card border border-gray-100 dark:border-amoled-border px-2 py-1.5 rounded text-[10px] font-semibold text-gray-700 dark:text-zinc-300 hover:border-gray-400 dark:hover:border-gray-500 transition shadow-sm"><span>Streisand</span><span class="text-gray-500 text-[12px]">📥</span></a>
-						<a href="https://apps.apple.com/us/app/npv-tunnel/id1629465476" target="_blank" class="flex justify-between items-center bg-white dark:bg-amoled-card border border-gray-100 dark:border-amoled-border px-2 py-1.5 rounded text-[10px] font-semibold text-gray-700 dark:text-zinc-300 hover:border-gray-400 dark:hover:border-gray-500 transition shadow-sm"><span>NapsternetV</span><span class="text-gray-500 text-[12px]">📥</span></a>
-						<a href="https://apps.apple.com/us/app/happ-proxy-utility/id6504287215" target="_blank" class="flex justify-between items-center bg-white dark:bg-amoled-card border border-gray-100 dark:border-amoled-border px-2 py-1.5 rounded text-[10px] font-semibold text-gray-700 dark:text-zinc-300 hover:border-gray-400 dark:hover:border-gray-500 transition shadow-sm"><span>happ</span><span class="text-gray-500 text-[12px]">📥</span></a>
-						<a href="https://apps.apple.com/us/app/hiddify-proxy-vpn/id6596777532" target="_blank" class="flex justify-between items-center bg-white dark:bg-amoled-card border border-gray-100 dark:border-amoled-border px-2 py-1.5 rounded text-[10px] font-semibold text-gray-700 dark:text-zinc-300 hover:border-gray-400 dark:hover:border-gray-500 transition shadow-sm"><span>Hiddify</span><span class="text-gray-500 text-[12px]">📥</span></a>
+						<a data-app-id="ios-v2box" href="https://apps.apple.com/us/app/v2box-v2ray-client/id6446814690" target="_blank" class="flex justify-between items-center bg-white dark:bg-amoled-card border border-gray-100 dark:border-amoled-border px-2 py-1.5 rounded text-[10px] font-semibold text-gray-700 dark:text-zinc-300 hover:border-gray-400 dark:hover:border-gray-500 transition shadow-sm"><span>V2Box</span><span class="text-gray-500 text-[12px]">📥</span></a>
+						<a data-app-id="ios-streisand" href="https://apps.apple.com/us/app/streisand/id6450534064" target="_blank" class="flex justify-between items-center bg-white dark:bg-amoled-card border border-gray-100 dark:border-amoled-border px-2 py-1.5 rounded text-[10px] font-semibold text-gray-700 dark:text-zinc-300 hover:border-gray-400 dark:hover:border-gray-500 transition shadow-sm"><span>Streisand</span><span class="text-gray-500 text-[12px]">📥</span></a>
+						<a data-app-id="ios-npv" href="https://apps.apple.com/us/app/npv-tunnel/id1629465476" target="_blank" class="flex justify-between items-center bg-white dark:bg-amoled-card border border-gray-100 dark:border-amoled-border px-2 py-1.5 rounded text-[10px] font-semibold text-gray-700 dark:text-zinc-300 hover:border-gray-400 dark:hover:border-gray-500 transition shadow-sm"><span>NapsternetV</span><span class="text-gray-500 text-[12px]">📥</span></a>
+						<a data-app-id="ios-happ" href="https://apps.apple.com/us/app/happ-proxy-utility/id6504287215" target="_blank" class="flex justify-between items-center bg-white dark:bg-amoled-card border border-gray-100 dark:border-amoled-border px-2 py-1.5 rounded text-[10px] font-semibold text-gray-700 dark:text-zinc-300 hover:border-gray-400 dark:hover:border-gray-500 transition shadow-sm"><span>happ</span><span class="text-gray-500 text-[12px]">📥</span></a>
+						<a data-app-id="ios-hiddify" href="https://apps.apple.com/us/app/hiddify-proxy-vpn/id6596777532" target="_blank" class="flex justify-between items-center bg-white dark:bg-amoled-card border border-gray-100 dark:border-amoled-border px-2 py-1.5 rounded text-[10px] font-semibold text-gray-700 dark:text-zinc-300 hover:border-gray-400 dark:hover:border-gray-500 transition shadow-sm"><span>Hiddify</span><span class="text-gray-500 text-[12px]">📥</span></a>
 						<div class="h-px w-full bg-gray-200 dark:bg-gray-700/50 my-1"></div>
-						<a href="https://apps.apple.com/us/app/clash-mi/id6744321968" target="_blank" class="flex justify-between items-center bg-white dark:bg-amoled-card border border-pink-300 dark:border-pink-800 px-2 py-1.5 rounded text-[10px] font-bold text-pink-700 dark:text-pink-400 hover:border-pink-500 dark:hover:border-pink-500 transition shadow-sm"><span>Clash Mi (YAML)</span><span class="text-pink-500 text-[12px]">📥</span></a>
+						<a data-app-id="ios-clashmi" href="https://apps.apple.com/us/app/clash-mi/id6744321968" target="_blank" class="flex justify-between items-center bg-white dark:bg-amoled-card border border-pink-300 dark:border-pink-800 px-2 py-1.5 rounded text-[10px] font-bold text-pink-700 dark:text-pink-400 hover:border-pink-500 dark:hover:border-pink-500 transition shadow-sm"><span>Clash Mi (YAML)</span><span class="text-pink-500 text-[12px]">📥</span></a>
 					</div>
 				</div>
 			</div>
@@ -13664,14 +13908,42 @@ ${COMMON_TOAST_HTML}
 		${COMMON_TOAST_JS}
 		${COMMON_SHARED_FUNCS_JS}
 		function getHost() { return window.location.host; }
-		function copyvIeesConfig() { navigator.clipboard.writeText(getvIeesLink()).then(() => alert('✅ کـانفـیگ با موفقیت کپی شد!')); }
+		function copyStatusText(text, successMsg, failMsg) {
+			function fallback() {
+				try {
+					var tempInput = document.createElement('textarea');
+					tempInput.value = text;
+					tempInput.style.position = 'fixed';
+					tempInput.style.left = '-9999px';
+					tempInput.style.top = '0';
+					document.body.appendChild(tempInput);
+					tempInput.focus();
+					tempInput.select();
+					var ok = document.execCommand('copy');
+					document.body.removeChild(tempInput);
+					alert(ok ? successMsg : (failMsg || 'خطا در کپی کردن!'));
+				} catch (err) {
+					alert(failMsg || 'خطا در کپی کردن!');
+				}
+			}
+			if (navigator.clipboard && navigator.clipboard.writeText) {
+				navigator.clipboard.writeText(text).then(() => alert(successMsg)).catch(fallback);
+			} else {
+				fallback();
+			}
+		}
+		function copyvIeesConfig() {
+			const link = getvIeesLink();
+			if (!link) return;
+			copyStatusText(link, '✅ کـانفـیگ با موفقیت کپی شد!', 'خطا در کپی کردن کـانفـیگ!');
+		}
 		function copyTextSub() {
 			const link = window.location.protocol + '//' + getHost() + '/sub/' + encodeURIComponent(window.statusUser.username) + '#%E2%9A%A1%40ZEUS_PANEL_BOT';
-			navigator.clipboard.writeText(link).then(() => alert('✅ لینک ساب متنی کپی شد!'));
+			copyStatusText(link, '✅ لینک ساب متنی کپی شد!', 'خطا در کپی کردن لینک ساب!');
 		}
 		function copyYamlSub() {
 			const link = window.location.protocol + '//' + getHost() + '/yaml/' + encodeURIComponent(window.statusUser.username) + '#%E2%9A%A1%40ZEUS_PANEL_BOT';
-			navigator.clipboard.writeText(link).then(() => alert('✅ لینک ساب YAML کپی شد!'));
+			copyStatusText(link, '✅ لینک ساب YAML کپی شد!', 'خطا در کپی کردن لینک ساب!');
 		}
 		function toggleQrModal(show, text) {
 			const modal = document.getElementById('qr-modal');
@@ -13679,29 +13951,37 @@ ${COMMON_TOAST_HTML}
 			const container = document.getElementById('qrcode-container');
 			if (show) {
 				container.innerHTML = '';
-				const qrCode = new QRCodeStyling({
-					width: 280,
-					height: 280,
-					data: text,
-					margin: 5,
-					qrOptions: { errorCorrectionLevel: 'L' },
-					dotsOptions: {
-						color: "#000000",
-						type: "square"
-					},
-					backgroundOptions: {
-						color: "#ffffff"
-					},
-					cornersSquareOptions: {
-						color: "#000000",
-						type: "square"
-					},
-					cornersDotOptions: {
-						color: "#000000",
-						type: "square"
+				try {
+					if (typeof QRCodeStyling !== 'undefined') {
+						const qrCode = new QRCodeStyling({
+							width: 280,
+							height: 280,
+							data: text,
+							margin: 5,
+							qrOptions: { errorCorrectionLevel: 'L' },
+							dotsOptions: {
+								color: "#000000",
+								type: "square"
+							},
+							backgroundOptions: {
+								color: "#ffffff"
+							},
+							cornersSquareOptions: {
+								color: "#000000",
+								type: "square"
+							},
+							cornersDotOptions: {
+								color: "#000000",
+								type: "square"
+							}
+						});
+						qrCode.append(container);
+					} else {
+						container.innerHTML = '<img src="https://api.qrserver.com/v1/create-qr-code/?size=280x280&data=' + encodeURIComponent(text) + '" class="mx-auto rounded shadow" alt="QR Code" />';
 					}
-				});
-				qrCode.append(container);
+				} catch (e) {
+					container.innerHTML = '<img src="https://api.qrserver.com/v1/create-qr-code/?size=280x280&data=' + encodeURIComponent(text) + '" class="mx-auto rounded shadow" alt="QR Code" />';
+				}
 				modal.classList.remove('opacity-0', 'pointer-events-none');
 				modal.classList.add('opacity-100', 'pointer-events-auto');
 				card.classList.remove('opacity-0', 'scale-95');
@@ -13717,7 +13997,72 @@ ${COMMON_TOAST_HTML}
 			const link = window.location.protocol + '//' + getHost() + '/sub/' + encodeURIComponent(window.statusUser.username) + '#%E2%9A%A1%40ZEUS_PANEL_BOT';
 			toggleQrModal(true, link);
 		}
+		let appReleasesLoaded = false;
+		function applyAppReleases(data) {
+			if (!data || typeof data !== 'object') return;
+			document.querySelectorAll('#software-downloads-content a[data-app-id]').forEach(el => {
+				const id = el.getAttribute('data-app-id');
+				const item = data[id];
+				if (item && item.url) {
+					el.href = item.url;
+					if (item.tag) {
+						el.title = item.tag;
+						const existingVer = el.querySelector('.app-ver-tag');
+						if (existingVer) {
+							existingVer.textContent = item.tag;
+						} else {
+							const iconSpan = el.lastElementChild;
+							if (iconSpan) {
+								const ver = document.createElement('span');
+								ver.className = 'app-ver-tag text-[8px] font-mono opacity-70 ml-1 truncate max-w-[65px]';
+								ver.dir = 'ltr';
+								ver.textContent = item.tag;
+								const wrap = document.createElement('span');
+								wrap.className = 'flex items-center shrink-0';
+								wrap.appendChild(ver);
+								iconSpan.parentNode.insertBefore(wrap, iconSpan);
+								wrap.appendChild(iconSpan);
+							}
+						}
+					}
+				}
+			});
+		}
+		async function loadAppReleases() {
+			if (appReleasesLoaded) return;
+			try {
+				const cached = localStorage.getItem('zeus_app_releases_v3');
+				if (cached) {
+					const parsed = JSON.parse(cached);
+					if (parsed && parsed.data && (Date.now() - parsed.ts < 7200000)) {
+						applyAppReleases(parsed.data);
+						appReleasesLoaded = true;
+						return;
+					}
+				}
+			} catch (e) { }
+			try {
+				const res = await fetch('/api/app-releases?v=3');
+				if (!res.ok) return;
+				const data = await res.json();
+				if (data && Object.keys(data).length > 0) {
+					applyAppReleases(data);
+					appReleasesLoaded = true;
+					try {
+						localStorage.setItem('zeus_app_releases_v3', JSON.stringify({ ts: Date.now(), data }));
+					} catch (e) { }
+				}
+			} catch (e) { }
+		}
+		function toggleSoftwareDownloads() {
+			const content = document.getElementById('software-downloads-content');
+			const icon = document.getElementById('software-downloads-icon');
+			if (content) content.classList.toggle('hidden');
+			if (icon) icon.classList.toggle('rotate-180');
+			if (content && !content.classList.contains('hidden')) loadAppReleases();
+		}
 		document.addEventListener('DOMContentLoaded', () => {
+			loadAppReleases();
 			const u = window.statusUser;
 			if (!u) return;
 			const limit = u.ip_limit !== undefined ? u.ip_limit : u.max_connections;
