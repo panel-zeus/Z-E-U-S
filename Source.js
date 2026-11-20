@@ -3984,7 +3984,7 @@ async function handlevIees(env, storedData = null, ctx = null, request = null) {
 				const lastCheck = GLOBAL_LAST_ACTIVE_WRITE.get(username + "_hb") || 0;
 				if (nowTime - lastCheck >= 180000) {
 					GLOBAL_LAST_ACTIVE_WRITE.set(username + "_hb", nowTime);
-					const user = await env.DB.prepare("SELECT is_active, limit_gb, used_gb, limit_req, used_req, expiry_days, created_at, ip_limit, active_ips FROM users WHERE uuid = ?").bind(validUUID).first();
+					const user = await env.DB.prepare("SELECT is_active, limit_gb, used_gb, limit_req, used_req, expiry_days, created_at, ip_limit, active_ips, start_on_first_connect, first_connection_time FROM users WHERE uuid = ?").bind(validUUID).first();
 					let isExpired = false;
 					let isIpLimitExpired = false;
 					let updatedActiveIps = null;
@@ -4523,8 +4523,9 @@ async function handlevIees(env, storedData = null, ctx = null, request = null) {
 		try {
 			let isDomainAddress = (isTrojanProto && addrType === 3) || (isShadowsocksProto && addrType === 3) || (!isTrojanProto && !isShadowsocksProto && addrType === 2);
 			let isIpAddress = (isTrojanProto && (addrType === 1 || addrType === 4)) || (isShadowsocksProto && (addrType === 1 || addrType === 4)) || (!isTrojanProto && !isShadowsocksProto && (addrType === 1 || addrType === 3));
+			let isTgDcIp = isIpAddress && /^(149\.154\.|91\.108\.|91\.105\.19[23]\.|95\.161\.(6[4-9]|[7-9][0-9]|1[01][0-9]|12[0-7])\.|185\.76\.151\.|2001:b28:f23[dcef]:|2001:67c:4e8:|2a0a:f280:)/i.test(addr);
 			let sniffedDomain = null;
-			if (isIpAddress && port === 443 && rawData && rawData.byteLength > 43) {
+			if (isIpAddress && !isTgDcIp && port === 443 && rawData && rawData.byteLength > 43) {
 				try {
 					let pos = 43;
 					if (rawData[0] === 0x16 && rawData[5] === 0x01) {
@@ -4555,7 +4556,7 @@ async function handlevIees(env, storedData = null, ctx = null, request = null) {
 					}
 				} catch (e) { }
 			}
-			if (isIpAddress && !sniffedDomain && rawData && rawData.byteLength >= 14) {
+			if (isIpAddress && !isTgDcIp && !sniffedDomain && rawData && rawData.byteLength >= 14) {
 				try {
 					const sliceLen = Math.min(rawData.byteLength, 2048);
 					const headStr = TEXT_DECODER.decode(rawData.subarray(0, sliceLen));
@@ -4701,14 +4702,52 @@ async function handlevIees(env, storedData = null, ctx = null, request = null) {
 								const IATA_LIST = ["FRA", "AMS", "LHR", "CDG", "VIE", "HEL", "CPH", "MAD", "BCN", "MXP", "FCO", "ZRH", "WAW", "PRG", "DUB", "SNN", "MAN", "GVA", "BRU", "LIS", "ATH", "SOF", "OTP", "TLL", "RIX", "VNO", "BUD", "BEG", "ZAG", "MUC", "HAM", "SIN", "NRT", "HKG", "TPE", "ICN", "DXB", "BOM", "DEL", "YYZ", "YUL", "YVR", "JFK", "EWR", "LAX", "SFO", "ORD", "MIA", "DFW", "SEA", "IAD", "ATL"];
 								let fallbackSuccess = false;
 								const shuffledIatas = IATA_LIST.slice().sort(() => 0.5 - Math.random());
-								const maxAttempts = 3;
-								for (let i = 0; i < maxAttempts && i < shuffledIatas.length; i++) {
-									const fallbackHost = shuffledIatas[i].toLowerCase() + ".proxyip.cmliussss.net";
+								const fallbackHosts = [
+									shuffledIatas[0].toLowerCase() + ".proxyip.cmliussss.net",
+									shuffledIatas[1].toLowerCase() + ".proxyip.cmliussss.net",
+									"proxyip.fxxk.dedyn.io"
+								];
+								for (const fallbackHost of fallbackHosts) {
 									try {
 										s = await connectDirect(fallbackHost, port, dataPayload, targetDoh);
 										fallbackSuccess = true;
 										break;
 									} catch (fallbackErr) { }
+								}
+								if (!fallbackSuccess) {
+									if (!GLOBAL_IPS_CACHE.loop_bypass || Date.now() - (GLOBAL_IPS_CACHE.loop_last_fetch || 0) > 3600000) {
+										GLOBAL_IPS_CACHE.loop_bypass = [];
+										const fallbackCountries = ["DE", "US", "GB", "NL", "FR"].sort(() => 0.5 - Math.random()).slice(0, 2);
+										for (const fc of fallbackCountries) {
+											try {
+												const text = await getCachedRepoFile("proxy_vip/" + fc + ".txt");
+												if (text) {
+													const lines = text.split("\n").map(l => l.trim()).filter(l => l.length > 5);
+													if (lines.length > 0) GLOBAL_IPS_CACHE.loop_bypass = GLOBAL_IPS_CACHE.loop_bypass.concat(lines);
+												}
+											} catch (e) { }
+										}
+										if (GLOBAL_IPS_CACHE.loop_bypass.length > 0) GLOBAL_IPS_CACHE.loop_last_fetch = Date.now();
+									}
+									if (GLOBAL_IPS_CACHE.loop_bypass && GLOBAL_IPS_CACHE.loop_bypass.length > 0) {
+										const vipCandidates = [...GLOBAL_IPS_CACHE.loop_bypass].sort(() => 0.5 - Math.random()).slice(0, 3);
+										const ac = new AbortController();
+										try {
+											s = await Promise.any(
+												vipCandidates.map(p =>
+													connectProxy(p, addr, port, dataPayload).then(sock => {
+														if (ac.signal.aborted) {
+															try { sock.close(); } catch (e) { }
+															throw new Error("Cancelled");
+														}
+														ac.abort();
+														return sock;
+													})
+												)
+											);
+											fallbackSuccess = true;
+										} catch (e) { }
+									}
 								}
 								if (!fallbackSuccess) throw directErr;
 							} else {
@@ -4887,17 +4926,33 @@ function convertToUint8Array(data) {
 const dnsCache = new Map();
 async function resolveToIPv4(host) {
 	if (isIPv4(host)) return host;
-	if (dnsCache.has(host)) return dnsCache.get(host);
+	const cached = dnsCache.get(host);
+	if (cached) {
+		if (Date.now() < cached.expires) return cached.ip;
+		dnsCache.delete(host);
+	}
 	try {
-		const res = await fetch("https://cloudflare-dns.com/dns-query?name=" + encodeURIComponent(host) + "&type=A", {
-			headers: { "Accept": "application/dns-json" }
-		});
+		const ac = new AbortController();
+		const tid = setTimeout(() => ac.abort(), 2500);
+		let res;
+		try {
+			res = await fetch("https://cloudflare-dns.com/dns-query?name=" + encodeURIComponent(host) + "&type=A", {
+				headers: { "Accept": "application/dns-json" },
+				signal: ac.signal
+			});
+		} finally {
+			clearTimeout(tid);
+		}
 		if (res.ok) {
 			const data = await res.json();
 			if (data.Answer) {
 				for (const ans of data.Answer) {
 					if (ans.type === 1 && isIPv4(ans.data)) {
-						dnsCache.set(host, ans.data);
+						if (dnsCache.size >= DNS_CACHE_MAX_ENTRIES) {
+							const oldestKey = dnsCache.keys().next().value;
+							if (oldestKey !== undefined) dnsCache.delete(oldestKey);
+						}
+						dnsCache.set(host, { ip: ans.data, expires: Date.now() + DNS_CACHE_TTL });
 						return ans.data;
 					}
 				}
