@@ -6,6 +6,7 @@ const GLOBAL_LAST_ACTIVE_WRITE = new Map();
 const GLOBAL_LAST_DB_WRITE = new Map();
 const GLOBAL_WRITE_LOCK = new Map();
 const DNS_CACHE = new Map();
+const DNS_INFLIGHT = new Map();
 const REPO_FILE_CACHE = new Map();
 let APP_RELEASES_CACHE = { data: null, timestamp: 0 };
 const APP_RELEASES_CONFIG = [
@@ -4667,22 +4668,28 @@ async function handlevIees(env, storedData = null, ctx = null, request = null) {
 					}
 					if (loopBypassProxies.length > 0) {
 						const ac = new AbortController();
+						const racePromises = loopBypassProxies.map(p =>
+							connectProxy(p, addr, port, dataPayload).then(sock => {
+								if (ac.signal.aborted) {
+									try { sock.close(); } catch (_) { }
+									throw new Error("Cancelled");
+								}
+								ac.abort();
+								return sock;
+							})
+						);
 						try {
-							s = await Promise.any(
-								loopBypassProxies.map(p =>
-									connectProxy(p, addr, port, dataPayload).then(sock => {
-										if (ac.signal.aborted) {
-											try { sock.close(); } catch (e) { }
-											throw new Error("Cancelled");
-										}
-										ac.abort();
-										return sock;
-									})
-								)
-							);
+							s = await Promise.any(racePromises);
 						} catch (e) {
 							throw new Error("Loop bypass proxies failed");
 						}
+						Promise.allSettled(racePromises).then(results => {
+							for (const r of results) {
+								if (r.status === 'fulfilled' && r.value && r.value !== s) {
+									try { r.value.close(); } catch (_) { }
+								}
+							}
+						}).catch(() => { });
 					} else if (socks5) {
 						try {
 							s = await connectProxy(socks5, addr, port, dataPayload);
@@ -4732,20 +4739,26 @@ async function handlevIees(env, storedData = null, ctx = null, request = null) {
 									if (GLOBAL_IPS_CACHE.loop_bypass && GLOBAL_IPS_CACHE.loop_bypass.length > 0) {
 										const vipCandidates = [...GLOBAL_IPS_CACHE.loop_bypass].sort(() => 0.5 - Math.random()).slice(0, 3);
 										const ac = new AbortController();
+										const vipRacePromises = vipCandidates.map(p =>
+											connectProxy(p, addr, port, dataPayload).then(sock => {
+												if (ac.signal.aborted) {
+													try { sock.close(); } catch (_) { }
+													throw new Error("Cancelled");
+												}
+												ac.abort();
+												return sock;
+											})
+										);
 										try {
-											s = await Promise.any(
-												vipCandidates.map(p =>
-													connectProxy(p, addr, port, dataPayload).then(sock => {
-														if (ac.signal.aborted) {
-															try { sock.close(); } catch (e) { }
-															throw new Error("Cancelled");
-														}
-														ac.abort();
-														return sock;
-													})
-												)
-											);
+											s = await Promise.any(vipRacePromises);
 											fallbackSuccess = true;
+											Promise.allSettled(vipRacePromises).then(results => {
+												for (const r of results) {
+													if (r.status === 'fulfilled' && r.value && r.value !== s) {
+														try { r.value.close(); } catch (_) { }
+													}
+												}
+											}).catch(() => { });
 										} catch (e) { }
 									}
 								}
@@ -5016,7 +5029,11 @@ async function dohQuery(domain, recordType, targetDoh = DOH_RESOLVER) {
 		if (Date.now() < cached.expires) return cached.data;
 		DNS_CACHE.delete(cacheKey);
 	}
-	try {
+	if (DNS_INFLIGHT.has(cacheKey)) {
+		return DNS_INFLIGHT.get(cacheKey);
+	}
+	const fetchPromise = (async () => {
+		try {
 		const typeMap = { A: 1, AAAA: 28 };
 		const qtype = typeMap[recordType.toUpperCase()] || 1;
 		const encodeDomain = (name) => {
@@ -5121,8 +5138,15 @@ async function dohQuery(domain, recordType, targetDoh = DOH_RESOLVER) {
 		}
 		DNS_CACHE.set(cacheKey, { data: answers, expires: Date.now() + DNS_CACHE_TTL });
 		return answers;
-	} catch (e) {
-		return [];
+		} catch (e) {
+			return [];
+		}
+	})();
+	DNS_INFLIGHT.set(cacheKey, fetchPromise);
+	try {
+		return await fetchPromise;
+	} finally {
+		DNS_INFLIGHT.delete(cacheKey);
 	}
 }
 function createUpstreamQueue({ getWriter, releaseWriter, retryConnect, closeConnection, name = "UpstreamQueue" }) {
@@ -5638,10 +5662,19 @@ async function connectProxy(proxyStr, destAddr, destPort, initialData, useTls = 
 	if (hasProtocol) {
 		return await connectSocks5(cleanStr, destAddr, destPort, initialData, useTls, reqHost);
 	}
-	return await Promise.any([
+	const probeRace = [
 		connectSocks5(cleanStr, destAddr, destPort, initialData, useTls, reqHost),
 		connectHttp(cleanStr, destAddr, destPort, initialData, useTls, reqHost)
-	]);
+	];
+	const winner = await Promise.any(probeRace);
+	Promise.allSettled(probeRace).then(results => {
+		for (const r of results) {
+			if (r.status === 'fulfilled' && r.value && r.value !== winner) {
+				try { r.value.close(); } catch (_) { }
+			}
+		}
+	}).catch(() => { });
+	return winner;
 }
 async function connectSocks4(proxyStr, destAddr, destPort, initialData, useTls = false, reqHost = "") {
 	const { host, port } = parseProxyConfig(proxyStr, 1080);
