@@ -1,105 +1,30 @@
 [
   {
-    "name": "AL.txt"
+    "name": "AZ.txt"
   },
   {
-    "name": "AM.txt"
-  },
-  {
-    "name": "AT.txt"
-  },
-  {
-    "name": "AU.txt"
-  },
-  {
-    "name": "BG.txt"
-  },
-  {
-    "name": "BR.txt"
+    "name": "BE.txt"
   },
   {
     "name": "CA.txt"
   },
   {
-    "name": "CH.txt"
-  },
-  {
-    "name": "CO.txt"
-  },
-  {
-    "name": "CU.txt"
-  },
-  {
     "name": "DE.txt"
+  },
+  {
+    "name": "EE.txt"
+  },
+  {
+    "name": "EG.txt"
   },
   {
     "name": "FI.txt"
   },
   {
-    "name": "FR.txt"
-  },
-  {
-    "name": "GL.txt"
-  },
-  {
     "name": "GR.txt"
   },
   {
-    "name": "HK.txt"
-  },
-  {
-    "name": "ID.txt"
-  },
-  {
-    "name": "IE.txt"
-  },
-  {
-    "name": "IL.txt"
-  },
-  {
-    "name": "IN.txt"
-  },
-  {
-    "name": "IQ.txt"
-  },
-  {
-    "name": "IT.txt"
-  },
-  {
-    "name": "JP.txt"
-  },
-  {
-    "name": "KR.txt"
-  },
-  {
-    "name": "KW.txt"
-  },
-  {
-    "name": "MC.txt"
-  },
-  {
-    "name": "MD.txt"
-  },
-  {
-    "name": "MN.txt"
-  },
-  {
-    "name": "MX.txt"
-  },
-  {
     "name": "NO.txt"
-  },
-  {
-    "name": "NZ.txt"
-  },
-  {
-    "name": "PA.txt"
-  },
-  {
-    "name": "PL.txt"
-  },
-  {
-    "name": "QA.txt"
   },
   {
     "name": "RO.txt"
@@ -108,18 +33,12 @@
     "name": "RU.txt"
   },
   {
-    "name": "SG.txt"
-  },
-  {
-    "name": "TH.txt"
+    "name": "SE.txt"
   },
   {
     "name": "TR.txt"
   },
   {
     "name": "UA.txt"
-  },
-  {
-    "name": "US.txt"
   }
 ]
