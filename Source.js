@@ -2725,7 +2725,7 @@ const Router = {
 				}
 				const dbSavedRow = await env.DB.prepare("SELECT value FROM settings WHERE key = 'worker_placement'").first();
 				const dbSavedPlacement = dbSavedRow && dbSavedRow.value ? dbSavedRow.value.trim().toLowerCase() : null;
-				if (placement && placement !== "smart") {
+				if (placement && placement !== "smart" && placement !== "targeted") {
 					await env.DB.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('worker_placement', ?)").bind(placement).run();
 				} else if (dbSavedPlacement && dbSavedPlacement !== "smart" && dbSavedPlacement !== "off") {
 					placement = dbSavedPlacement;
@@ -9608,14 +9608,8 @@ ${COMMON_TOAST_HTML}
 				if (vipCountries.length < 1) {
 					const fallbackCountries = ["DE", "US", "GB", "NL", "FR", "TR"];
 					await Promise.all(fallbackCountries.map(async (country) => {
-						try {
-							const resVip = await fetchWithFallbackUI('proxy_vip/' + country + '.txt');
-							if (resVip.ok) {
-								const text = await resVip.text();
-								const lines = text.split('\\n').map(l => l.trim()).filter(l => l.length > 5);
-								if (lines.length > 0) { cachedVipProxies[country] = lines; vipCountries.push(country); }
-							}
-						} catch(e) {}
+						const lines = await fetchVipCountryProxies(country);
+						if (lines) { cachedVipProxies[country] = lines; vipCountries.push(country); }
 					}));
 				}
 				if (vipCountries.length < 1) {
@@ -10064,34 +10058,48 @@ const PLACEMENT_DATA = {
 			"GCP": { "regions": [ {"id": "africa-south1", "name": "Johannesburg", "country": "South Africa", "emoji": "🇿🇦", "location": "Johannesburg"}, {"id": "asia-east1", "name": "Taiwan", "country": "Taiwan", "emoji": "🇹🇼", "location": "Changhua County"}, {"id": "asia-east2", "name": "Hong Kong", "country": "Hong Kong", "emoji": "🇭🇰", "location": "Hong Kong"}, {"id": "asia-northeast1", "name": "Tokyo", "country": "Japan", "emoji": "🇯🇵", "location": "Tokyo"}, {"id": "asia-northeast2", "name": "Osaka", "country": "Japan", "emoji": "🇯🇵", "location": "Osaka"}, {"id": "asia-northeast3", "name": "Seoul", "country": "South Korea", "emoji": "🇰🇷", "location": "Seoul"}, {"id": "asia-south1", "name": "Mumbai", "country": "India", "emoji": "🇮🇳", "location": "Mumbai"}, {"id": "asia-south2", "name": "Delhi", "country": "India", "emoji": "🇮🇳", "location": "Delhi"}, {"id": "asia-southeast1", "name": "Singapore", "country": "Singapore", "emoji": "🇸🇬", "location": "Singapore"}, {"id": "asia-southeast2", "name": "Jakarta", "country": "Indonesia", "emoji": "🇮🇩", "location": "Jakarta"}, {"id": "asia-southeast3", "name": "Bangkok", "country": "Thailand", "emoji": "🇹🇭", "location": "Bangkok"}, {"id": "australia-southeast1", "name": "Sydney", "country": "Australia", "emoji": "🇦🇺", "location": "Sydney"}, {"id": "australia-southeast2", "name": "Melbourne", "country": "Australia", "emoji": "🇦🇺", "location": "Melbourne"}, {"id": "europe-central2", "name": "Warsaw", "country": "Poland", "emoji": "🇵🇱", "location": "Warsaw"}, {"id": "europe-north1", "name": "Finland", "country": "Finland", "emoji": "🇫🇮", "location": "Hamina"}, {"id": "europe-north2", "name": "Stockholm", "country": "Sweden", "emoji": "🇸🇪", "location": "Stockholm"}, {"id": "europe-southwest1", "name": "Madrid", "country": "Spain", "emoji": "🇪🇸", "location": "Madrid"}, {"id": "europe-west1", "name": "Belgium", "country": "Belgium", "emoji": "🇧🇪", "location": "St. Ghislain"}, {"id": "europe-west2", "name": "London", "country": "United Kingdom", "emoji": "🇬🇧", "location": "London"}, {"id": "europe-west3", "name": "Frankfurt", "country": "Germany", "emoji": "🇩🇪", "location": "Frankfurt"}, {"id": "europe-west4", "name": "Netherlands", "country": "Netherlands", "emoji": "🇳🇱", "location": "Eemshaven"}, {"id": "europe-west6", "name": "Zurich", "country": "Switzerland", "emoji": "🇨🇭", "location": "Zurich"}, {"id": "europe-west8", "name": "Milan", "country": "Italy", "emoji": "🇮🇹", "location": "Milan"}, {"id": "europe-west9", "name": "Paris", "country": "France", "emoji": "🇫🇷", "location": "Paris"}, {"id": "europe-west10", "name": "Berlin", "country": "Germany", "emoji": "🇩🇪", "location": "Berlin"}, {"id": "europe-west12", "name": "Turin", "country": "Italy", "emoji": "🇮🇹", "location": "Turin"}, {"id": "me-central1", "name": "Doha", "country": "Qatar", "emoji": "🇶🇦", "location": "Doha"}, {"id": "me-central2", "name": "Dammam", "country": "Saudi Arabia", "emoji": "🇸🇦", "location": "Dammam"}, {"id": "me-west1", "name": "Tel Aviv", "country": "Israel", "emoji": "🇮🇱", "location": "Tel Aviv"}, {"id": "northamerica-northeast1", "name": "Montreal", "country": "Canada", "emoji": "🇨🇦", "location": "Montreal"}, {"id": "northamerica-northeast2", "name": "Toronto", "country": "Canada", "emoji": "🇨🇦", "location": "Toronto"}, {"id": "northamerica-south1", "name": "Mexico", "country": "Mexico", "emoji": "🇲🇽", "location": "Queretaro"}, {"id": "southamerica-east1", "name": "Sao Paulo", "country": "Brazil", "emoji": "🇧🇷", "location": "Sao Paulo"}, {"id": "southamerica-west1", "name": "Santiago", "country": "Chile", "emoji": "🇨🇱", "location": "Santiago"}, {"id": "us-central1", "name": "Iowa", "country": "United States", "emoji": "🇺🇸", "location": "Council Bluffs, Iowa"}, {"id": "us-east1", "name": "South Carolina", "country": "United States", "emoji": "🇺🇸", "location": "Moncks Corner, South Carolina"}, {"id": "us-east4", "name": "Northern Virginia", "country": "United States", "emoji": "🇺🇸", "location": "Ashburn, Virginia"}, {"id": "us-east5", "name": "Columbus", "country": "United States", "emoji": "🇺🇸", "location": "Columbus, Ohio"}, {"id": "us-south1", "name": "Dallas", "country": "United States", "emoji": "🇺🇸", "location": "Dallas, Texas"}, {"id": "us-west1", "name": "Oregon", "country": "United States", "emoji": "🇺🇸", "location": "The Dalles, Oregon"}, {"id": "us-west2", "name": "Los Angeles", "country": "United States", "emoji": "🇺🇸", "location": "Los Angeles, California"}, {"id": "us-west3", "name": "Salt Lake City", "country": "United States", "emoji": "🇺🇸", "location": "Salt Lake City, Utah"}, {"id": "us-west4", "name": "Las Vegas", "country": "United States", "emoji": "🇺🇸", "location": "Las Vegas, Nevada"} ] }
 		  }
 		};
+		function resolvePanelPlacementIso(placementVal) {
+			const cleanRaw = String(placementVal || '').trim().toLowerCase();
+			if (!cleanRaw || cleanRaw === 'none' || cleanRaw === 'off' || cleanRaw.startsWith('targeted')) return '';
+			if (cleanRaw === 'smart') return 'SMART';
+			const cleanId = cleanRaw.includes(':') ? cleanRaw.split(':')[1] : cleanRaw;
+			const provPrefix = cleanRaw.includes(':') ? cleanRaw.split(':')[0] : null;
+			const countryToIso = { "United States": "US", "South Africa": "ZA", "Hong Kong": "HK", "Taiwan": "TW", "India": "IN", "Singapore": "SG", "Australia": "AU", "Indonesia": "ID", "Malaysia": "MY", "New Zealand": "NZ", "Thailand": "TH", "Japan": "JP", "South Korea": "KR", "Canada": "CA", "Germany": "DE", "Switzerland": "CH", "Ireland": "IE", "United Kingdom": "GB", "France": "FR", "Sweden": "SE", "Italy": "IT", "Spain": "ES", "Israel": "IL", "United Arab Emirates": "AE", "Bahrain": "BH", "Mexico": "MX", "Brazil": "BR", "Austria": "AT", "Belgium": "BE", "Chile": "CL", "Denmark": "DK", "Poland": "PL", "Qatar": "QA", "Norway": "NO", "Netherlands": "NL", "Finland": "FI", "Saudi Arabia": "SA" };
+			for (const prov in PLACEMENT_DATA.providers) {
+				if (provPrefix && prov.toLowerCase() !== provPrefix) continue;
+				const found = PLACEMENT_DATA.providers[prov].regions.find(r => r.id.toLowerCase() === cleanId);
+				if (found && found.country) return countryToIso[found.country] || '';
+			}
+			return '';
+		}
 		function getPlacementEmoji(placementVal) {
 			const globeSvg = '<svg class="w-4 h-4 text-sky-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>';
 			const smartSvg = '<svg class="w-4 h-4 text-purple-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>';
-			if (!placementVal || placementVal === 'none' || placementVal === 'off') return globeSvg;
-			if (placementVal === 'smart') return smartSvg;
-			let cleanVal = String(placementVal).toLowerCase().trim();
-			if (cleanVal.includes(':')) cleanVal = cleanVal.split(':')[1];
-			const countryToIso = { "United States": "us", "South Africa": "za", "Hong Kong": "hk", "Taiwan": "tw", "India": "in", "Singapore": "sg", "Australia": "au", "Indonesia": "id", "Malaysia": "my", "New Zealand": "nz", "Thailand": "th", "Japan": "jp", "South Korea": "kr", "Canada": "ca", "Germany": "de", "Switzerland": "ch", "Ireland": "ie", "United Kingdom": "gb", "France": "fr", "Sweden": "se", "Italy": "it", "Spain": "es", "Israel": "il", "United Arab Emirates": "ae", "Bahrain": "bh", "Mexico": "mx", "Brazil": "br", "Austria": "at", "Belgium": "be", "Chile": "cl", "Denmark": "dk", "Poland": "pl", "Qatar": "qa", "Norway": "no", "Netherlands": "nl", "Finland": "fi", "Saudi Arabia": "sa" };
-			for (const prov in PLACEMENT_DATA.providers) {
-				const found = PLACEMENT_DATA.providers[prov].regions.find(r => r.id.toLowerCase() === cleanVal);
-				if (found && found.country) {
-					const iso = countryToIso[found.country];
-					if (iso) return '<span class="fi fi-' + iso + ' text-sm rounded-sm shadow-sm leading-none"></span>';
-				}
-			}
+			const iso = resolvePanelPlacementIso(placementVal);
+			if (iso === 'SMART') return smartSvg;
+			if (iso) return '<span class="fi fi-' + iso.toLowerCase() + ' text-sm rounded-sm shadow-sm leading-none"></span>';
 			return globeSvg;
 		}
 		async function updatePlacementCapsuleUI() {
 			try {
 				const cached = localStorage.getItem('zeus_cached_placement');
-				if (cached) { const el = document.getElementById('placement-flag-emoji'); if (el) el.innerHTML = getPlacementEmoji(cached); }
+				if (cached) {
+					if (!String(cached).trim().toLowerCase().startsWith('targeted')) {
+						window.currentPanelPlacementIso = resolvePanelPlacementIso(cached);
+					}
+					const el = document.getElementById('placement-flag-emoji');
+					if (el) el.innerHTML = getPlacementEmoji(cached);
+				}
 				const res = await fetch('/api/placement-status');
 				if (res.ok) {
 					const data = await res.json();
 					if (data && data.placement) {
 						localStorage.setItem('zeus_cached_placement', data.placement);
+						const cleanPlc = String(data.placement).trim().toLowerCase();
+						window.currentPanelPlacementIso = cleanPlc.startsWith('targeted') ? undefined : resolvePanelPlacementIso(cleanPlc);
 						const el = document.getElementById('placement-flag-emoji');
 						if (el) el.innerHTML = getPlacementEmoji(data.placement);
+						if (typeof filterAndRenderUsers === 'function' && window.allUsers) filterAndRenderUsers();
 					}
 				}
 			} catch(e) {}
@@ -10314,20 +10322,7 @@ const PLACEMENT_DATA = {
 			btn.innerHTML = '<svg class="w-5 h-5 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg> در حال دیپلوی...';
 			btn.disabled = true;
 			try {
-				let isoCode = "";
-				if (regionValue === "smart") {
-					isoCode = "SMART";
-				} else if (regionValue !== "off" && regionValue !== "none" && !regionValue.startsWith("targeted")) {
-					let foundCountry = null;
-					for (const prov in PLACEMENT_DATA.providers) {
-						const found = PLACEMENT_DATA.providers[prov].regions.find(r => (prov.toLowerCase() + ':' + r.id.toLowerCase()) === regionValue.toLowerCase());
-						if (found) { foundCountry = found.country; break; }
-					}
-					if (foundCountry) {
-						const countryToIso = { "United States": "US", "South Africa": "ZA", "Hong Kong": "HK", "Taiwan": "TW", "India": "IN", "Singapore": "SG", "Australia": "AU", "Indonesia": "ID", "Malaysia": "MY", "New Zealand": "NZ", "Thailand": "TH", "Japan": "JP", "South Korea": "KR", "Canada": "CA", "Germany": "DE", "Switzerland": "CH", "Ireland": "IE", "United Kingdom": "GB", "France": "FR", "Sweden": "SE", "Italy": "IT", "Spain": "ES", "Israel": "IL", "United Arab Emirates": "AE", "Bahrain": "BH", "Mexico": "MX", "Brazil": "BR", "Austria": "AT", "Belgium": "BE", "Chile": "CL", "Denmark": "DK", "Poland": "PL", "Qatar": "QA", "Norway": "NO", "Netherlands": "NL", "Finland": "FI", "Saudi Arabia": "SA" };
-						isoCode = countryToIso[foundCountry] || "";
-					}
-				}
+				const isoCode = resolvePanelPlacementIso(regionValue);
 				let res = await fetch('/api/update-placement', {
 					method: 'POST',
 					headers: { 'Content-Type': 'application/json' },
@@ -10341,6 +10336,10 @@ const PLACEMENT_DATA = {
 				}
 				if (res.ok && data.success) {
 					localStorage.setItem('zeus_cached_placement', regionValue);
+					window.currentPanelPlacementIso = isoCode;
+					const flagEl = document.getElementById('placement-flag-emoji');
+					if (flagEl) flagEl.innerHTML = getPlacementEmoji(regionValue);
+					if (typeof loadUsers === 'function') loadUsers(true);
 					showToast('✅ ریجن جدید با موفقیت اعمال و ورکر دیپلوی شد! در حال رفرش...');
 					togglePlacementModal(false);
 					setTimeout(() => window.location.reload(), 3000);
@@ -10597,6 +10596,7 @@ async function executeRocketCreate() {
 					return;
 				}
 				if (res.ok && data.success) {
+					clearPanelRepoCaches();
 					if (isUpdate) {
 						const successModal = document.getElementById('update-success-modal');
 						const successCard = successModal.querySelector('div');
@@ -10609,7 +10609,7 @@ async function executeRocketCreate() {
 							window.location.href = window.location.pathname + '?t=' + Date.now();
 						}, 10000);
 					} else {
-						alert('پـنـل ری استارت و مجدداً دیپلوی شد. صفحه تا چند ثانیه دیگر رفرش می‌شود.');
+						alert('پـنـل ری استارت، کش لیست‌ها پاکسازی و مجدداً دیپلوی شد. صفحه تا چند ثانیه دیگر رفرش می‌شود.');
 						setTimeout(() => {
 							window.location.href = window.location.pathname + '?t=' + Date.now();
 						}, 5000);
@@ -11019,17 +11019,20 @@ async function executeRocketCreate() {
 						if (user.user_socks5 || user.user_proxy_ip) { proxyList = [user.user_socks5 || user.user_proxy_ip]; }
 					}
 					let allFlagsHtml = [];
-					if (user.enable_direct !== 0 && user.user_proxy_iata) {
-						const iata = user.user_proxy_iata.toUpperCase();
-						const flag = typeof getFlagEmoji === 'function' ? getFlagEmoji(iata) : '<span class="zeus-flag-globe">🌐</span>';
-						const directTitle = iata === 'SMART' ? 'مستقیم (هوشمند/خودکار)' : ('مستقیم (پنل): ' + iata);
-						allFlagsHtml.push('<span title="' + directTitle + '" class="leading-none flex items-center justify-center">' + flag + '</span>');
-					} else if (user.enable_direct !== 0) {
-						const isPanelSmart = localStorage.getItem('zeus_cached_placement') === 'smart';
-						const directIcon = isPanelSmart && typeof getFlagEmoji === 'function'
-							? getFlagEmoji('SMART')
-							: '<span class="zeus-flag-globe">🌐</span>';
-						allFlagsHtml.push('<span title="مستقیم (هوشمند/دیفالت)" class="leading-none flex items-center justify-center">' + directIcon + '</span>');
+					if (user.enable_direct !== 0) {
+						const cachedPlc = String(localStorage.getItem('zeus_cached_placement') || '').trim().toLowerCase();
+						const activePanelIso = window.currentPanelPlacementIso !== undefined
+							? window.currentPanelPlacementIso
+							: (cachedPlc && !cachedPlc.startsWith('targeted') ? resolvePanelPlacementIso(cachedPlc) : undefined);
+						const effectiveDirectIata = activePanelIso !== undefined ? activePanelIso : (user.user_proxy_iata || '');
+						if (effectiveDirectIata) {
+							const iata = effectiveDirectIata.toUpperCase();
+							const flag = typeof getFlagEmoji === 'function' ? getFlagEmoji(iata) : '<span class="zeus-flag-globe">🌐</span>';
+							const directTitle = iata === 'SMART' ? 'مستقیم (هوشمند/خودکار)' : ('مستقیم (پنل): ' + iata);
+							allFlagsHtml.push('<span title="' + directTitle + '" class="leading-none flex items-center justify-center">' + flag + '</span>');
+						} else {
+							allFlagsHtml.push('<span title="مستقیم (هوشمند/دیفالت)" class="leading-none flex items-center justify-center"><span class="zeus-flag-globe">🌐</span></span>');
+						}
 					}
 					if (proxyList.length > 0 && proxyList[0]) {
 						proxyList.forEach(item => {
@@ -12975,26 +12978,18 @@ const UPDATE_FIX = "constsCURRENT_VERSION='d.d.d'";
 				const regionValue = window.pendingCoreAction.replace('update-placement-', '');
 				btn.disabled = true;
 				btn.innerText = 'در حال اعمال...';
-				let isoCode = "";
-				if (regionValue === "smart") {
-					isoCode = "SMART";
-				} else if (regionValue !== "off" && regionValue !== "none" && !regionValue.startsWith("targeted")) {
-					let foundCountry = null;
-					for (const prov in PLACEMENT_DATA.providers) {
-						const found = PLACEMENT_DATA.providers[prov].regions.find(r => (prov.toLowerCase() + ':' + r.id.toLowerCase()) === regionValue.toLowerCase());
-						if (found) { foundCountry = found.country; break; }
-					}
-					if (foundCountry) {
-						const countryToIso = { "United States": "US", "South Africa": "ZA", "Hong Kong": "HK", "Taiwan": "TW", "India": "IN", "Singapore": "SG", "Australia": "AU", "Indonesia": "ID", "Malaysia": "MY", "New Zealand": "NZ", "Thailand": "TH", "Japan": "JP", "South Korea": "KR", "Canada": "CA", "Germany": "DE", "Switzerland": "CH", "Ireland": "IE", "United Kingdom": "GB", "France": "FR", "Sweden": "SE", "Italy": "IT", "Spain": "ES", "Israel": "IL", "United Arab Emirates": "AE", "Bahrain": "BH", "Mexico": "MX", "Brazil": "BR", "Austria": "AT", "Belgium": "BE", "Chile": "CL", "Denmark": "DK", "Poland": "PL", "Qatar": "QA", "Norway": "NO", "Netherlands": "NL", "Finland": "FI", "Saudi Arabia": "SA" };
-						isoCode = countryToIso[foundCountry] || "";
-					}
-				}
+				const isoCode = resolvePanelPlacementIso(regionValue);
 				fetch('/api/update-placement', {
 					method: 'POST',
 					headers: { 'Content-Type': 'application/json' },
 					body: JSON.stringify({ region: regionValue, iso: isoCode, cf_token: token })
 				}).then(r => r.json()).then(d => {
 					if(d.success) {
+						localStorage.setItem('zeus_cached_placement', regionValue);
+						window.currentPanelPlacementIso = isoCode;
+						const flagEl = document.getElementById('placement-flag-emoji');
+						if (flagEl) flagEl.innerHTML = getPlacementEmoji(regionValue);
+						if (typeof loadUsers === 'function') loadUsers(true);
 						showToast('✅ ریجن پنل تغییر کرد و دیپلوی شد.');
 						toggleTokenModal(false);
 						togglePlacementModal(false);
@@ -13048,7 +13043,7 @@ async function ensureIpv6Cache() {
 		} catch(e) {}
 	}
 	try {
-		const response = await fetchWithFallbackUI('ip6.txt');
+		const response = await fetchWithFallbackUI('ip6.txt?t=' + Date.now(), { cache: 'no-store' });
 		if (response.ok) {
 			const text = await response.text();
 			const lines = text.split('\\n').map(l => l.trim()).filter(l => l.length > 0 && !l.includes('#') && !l.startsWith('[source') && !l.includes('----------'));
@@ -13063,44 +13058,67 @@ async function ensureIpv6Cache() {
 }
 let cachedVipList = null;
 let cachedVipProxies = {};
+function clearPanelRepoCaches() {
+	try {
+		['zeus_vip_cache', 'zeus_ips_cache', 'zeus_ipv6_cache', 'zeus_domains_cache', 'zeus_atlas_countries_cache'].forEach(function(key) {
+			localStorage.removeItem(key);
+		});
+	} catch(e) {}
+	cachedVipList = null;
+	cachedVipProxies = {};
+	cachedIpsData = {};
+	cachedDomainsData = [];
+	cachedIpv6Data = [];
+	if (typeof cachedAtlasCountries !== 'undefined') cachedAtlasCountries = null;
+}
 function selectSingleRepoType(checkbox) {
     const checkboxes = document.querySelectorAll('input[name="ip-repo-type"]');
     const anyChecked = Array.from(checkboxes).some(cb => cb.checked);
     if (!anyChecked) checkbox.checked = true;
 }
-async function initVipCache() {
+async function fetchVipCountryProxies(country) {
+	try {
+		const resVip = await fetchWithFallbackUI('proxy_vip/' + country + '.txt?t=' + Date.now(), { cache: 'no-store' });
+		if (resVip.ok) {
+			const text = await resVip.text();
+			const lines = text.split('\\n').map(l => l.trim()).filter(l => l.length > 5);
+			if (lines.length > 0) return lines;
+		}
+	} catch(e) {}
+	return null;
+}
+async function initVipCache(forceRefresh = false) {
 	let staleVipList = null;
 	let staleVipProxies = null;
 	try {
-		const cacheData = localStorage.getItem('zeus_vip_cache');
-		if (cacheData) {
-			try {
-				const parsed = JSON.parse(cacheData);
-				staleVipList = parsed.vipList;
-				staleVipProxies = parsed.vipProxies;
-				if (Date.now() - parsed.timestamp < 3600000) {
-					cachedVipList = parsed.vipList;
-					cachedVipProxies = parsed.vipProxies;
-					return;
-				}
-			} catch(e) {}
+		if (!forceRefresh) {
+			const cacheData = localStorage.getItem('zeus_vip_cache');
+			if (cacheData) {
+				try {
+					const parsed = JSON.parse(cacheData);
+					staleVipList = parsed.vipList;
+					staleVipProxies = parsed.vipProxies;
+					if (Date.now() - parsed.timestamp < 3600000) {
+						cachedVipList = parsed.vipList;
+						cachedVipProxies = parsed.vipProxies || {};
+						return;
+					}
+				} catch(e) {}
+			}
 		}
-		const resVipList = await fetchWithFallbackUI('vip-list');
+		const resVipList = await fetchWithFallbackUI('vip-list?t=' + Date.now(), { cache: 'no-store' });
 		if (resVipList.ok) {
 			const files = await resVipList.json();
-			cachedVipList = files.filter(f => f && f.name && f.name.endsWith('.txt')).map(f => f.name.replace('.txt', '').toUpperCase());
-			if (cachedVipList && cachedVipList.length > 0) {
-				await Promise.all(cachedVipList.map(async (country) => {
-					try {
-						const resVip = await fetchWithFallbackUI('proxy_vip/' + country + '.txt');
-						if (resVip.ok) {
-							const text = await resVip.text();
-							const lines = text.split('\\n').map(l => l.trim()).filter(l => l.length > 5);
-							if (lines.length > 0) { cachedVipProxies[country] = lines; }
-						}
-					} catch(e) {}
+			const nextList = files.filter(f => f && f.name && f.name.endsWith('.txt')).map(f => f.name.replace('.txt', '').toUpperCase());
+			const nextProxies = {};
+			if (nextList.length > 0) {
+				await Promise.all(nextList.map(async (country) => {
+					const lines = await fetchVipCountryProxies(country);
+					if (lines) nextProxies[country] = lines;
 				}));
 			}
+			cachedVipList = nextList;
+			cachedVipProxies = nextProxies;
 			try {
 				localStorage.setItem('zeus_vip_cache', JSON.stringify({
 					timestamp: Date.now(),
@@ -13128,7 +13146,7 @@ async function ensureIpsCache() {
 		} catch(e) {}
 	}
 	try {
-		const response = await fetchWithFallbackUI('ips.txt');
+		const response = await fetchWithFallbackUI('ips.txt?t=' + Date.now(), { cache: 'no-store' });
 		if (response.ok) {
 			const text = await response.text();
 			const lines = text.split('\\n').map(l => l.trim()).filter(l => l.length > 0 && !l.includes('#') && !l.startsWith('[source') && !l.includes('----------'));
@@ -13156,7 +13174,7 @@ async function ensureDomainsCache() {
 		} catch(e) {}
 	}
 	try {
-		const response = await fetchWithFallbackUI('dom.txt');
+		const response = await fetchWithFallbackUI('dom.txt?t=' + Date.now(), { cache: 'no-store' });
 		if (response.ok) {
 			const text = await response.text();
 			const lines = text.split('\\n').map(l => l.trim()).filter(l => l.length > 0 && !l.includes('#') && !l.startsWith('[source') && !l.includes('----------'));
