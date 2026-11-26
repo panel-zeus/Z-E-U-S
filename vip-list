@@ -21,7 +21,13 @@
     "name": "FI.txt"
   },
   {
-    "name": "GR.txt"
+    "name": "FR.txt"
+  },
+  {
+    "name": "GB.txt"
+  },
+  {
+    "name": "NL.txt"
   },
   {
     "name": "NO.txt"
@@ -40,5 +46,8 @@
   },
   {
     "name": "UA.txt"
+  },
+  {
+    "name": "US.txt"
   }
 ]
