@@ -14,35 +14,60 @@
 [![Telegram](https://img.shields.io/badge/Community-PANEL__ZEUS-2CA5E0.svg?style=for-the-badge&logo=telegram)](https://t.me/PANEL_ZEUS)
 </div>
 
+<p align="center">
+  <img src="https://raw.githubusercontent.com/panel-zeus/Z-E-U-S/refs/heads/main/photos/dark.png" width="100%" alt="داشبورد اصلی پنل زئوس">
+</p>
+
 <table width="100%">
-<tr>
-<td width="50%" valign="middle" align="center">
-<img src="https://raw.githubusercontent.com/panel-zeus/Z-E-U-S/refs/heads/main/photos/dark.png" width="100%" alt="Zeus Panel Dark Mode" style="border-radius: 12px;">
-</td>
-<td width="50%" valign="middle" align="center">
-<img src="https://raw.githubusercontent.com/panel-zeus/Z-E-U-S/refs/heads/main/photos/1.png" width="100%" alt="Zeus Panel Screenshot 1" style="border-radius: 12px;">
-</td>
-</tr>
-<tr>
-<td width="50%" valign="middle" align="center">
-<img src="https://raw.githubusercontent.com/panel-zeus/Z-E-U-S/refs/heads/main/photos/2.png" width="100%" alt="Zeus Panel Screenshot 2" style="border-radius: 12px;">
-</td>
-<td width="50%" valign="middle" align="center">
-<img src="https://raw.githubusercontent.com/panel-zeus/Z-E-U-S/refs/heads/main/photos/3.png" width="100%" alt="Zeus Panel Screenshot 3" style="border-radius: 12px;">
-</td>
-</tr>
+  <tr>
+    <td width="20%" valign="middle" align="center">
+      <img src="https://raw.githubusercontent.com/panel-zeus/Z-E-U-S/refs/heads/main/photos/bot.png" width="100%" alt="منوی ربات تلگرام زئوس">
+    </td>
+    <td width="20%" valign="middle" align="center">
+      <img src="https://raw.githubusercontent.com/panel-zeus/Z-E-U-S/refs/heads/main/photos/wapp/1.jpg" width="100%" alt="داشبورد مینی‌اپ زئوس">
+    </td>
+    <td width="20%" valign="middle" align="center">
+      <img src="https://raw.githubusercontent.com/panel-zeus/Z-E-U-S/refs/heads/main/photos/wapp/2.jpg" width="100%" alt="مدیریت پنل‌ها در مینی‌اپ">
+    </td>
+    <td width="20%" valign="middle" align="center">
+      <img src="https://raw.githubusercontent.com/panel-zeus/Z-E-U-S/refs/heads/main/photos/wapp/3.jpg" width="100%" alt="مدیریت اکانت‌های کلودفلر در مینی‌اپ">
+    </td>
+    <td width="20%" valign="middle" align="center">
+      <img src="https://raw.githubusercontent.com/panel-zeus/Z-E-U-S/refs/heads/main/photos/status.png" width="100%" alt="صفحه وضعیت اشتراک کاربر">
+    </td>
+  </tr>
 </table>
- 
+
+<details align="center">
+<summary><b>📸 مشاهده ادامه تصاویر: تنظیمات پنل وب و ابزارهای مینی‌اپ (۶ تصویر)</b></summary>
+<br>
+
 <table width="100%">
-<tr>
-<td width="50%" valign="middle" align="center">
-<img src="https://raw.githubusercontent.com/panel-zeus/Z-E-U-S/refs/heads/main/photos/bot.png" width="100%" alt="Zeus Panel Status" style="border-radius: 12px;">
-</td>
-<td width="50%" valign="middle" align="center">
-<img src="https://raw.githubusercontent.com/panel-zeus/Z-E-U-S/refs/heads/main/photos/status.png" width="100%" alt="Zeus Panel Dark Mode" style="border-radius: 12px;">
-</td>
-</tr>
+  <tr>
+    <td width="33.3%" valign="middle" align="center">
+      <img src="https://raw.githubusercontent.com/panel-zeus/Z-E-U-S/refs/heads/main/photos/1.png" width="100%" alt="ویرایش کاربر - پروتکل‌ها و محدودیت">
+    </td>
+    <td width="33.3%" valign="middle" align="center">
+      <img src="https://raw.githubusercontent.com/panel-zeus/Z-E-U-S/refs/heads/main/photos/2.png" width="100%" alt="ویرایش کاربر - پورت‌ها، آی‌پی تمیز و فرگمنت">
+    </td>
+    <td width="33.3%" valign="middle" align="center">
+      <img src="https://raw.githubusercontent.com/panel-zeus/Z-E-U-S/refs/heads/main/photos/3.png" width="100%" alt="ویرایش کاربر - پروکسی‌های VIP چندکشوره">
+    </td>
+  </tr>
+  <tr>
+    <td width="33.3%" valign="middle" align="center">
+      <img src="https://raw.githubusercontent.com/panel-zeus/Z-E-U-S/refs/heads/main/photos/wapp/4.jpg" width="100%" alt="مینی‌اپ - ترمیم اکانت و رفع ارور 1101">
+    </td>
+    <td width="33.3%" valign="middle" align="center">
+      <img src="https://raw.githubusercontent.com/panel-zeus/Z-E-U-S/refs/heads/main/photos/wapp/5.jpg" width="100%" alt="مینی‌اپ - سنجش تاخیر و وضعیت پنل">
+    </td>
+    <td width="33.3%" valign="middle" align="center">
+      <img src="https://raw.githubusercontent.com/panel-zeus/Z-E-U-S/refs/heads/main/photos/wapp/6.jpg" width="100%" alt="مینی‌اپ - دانلود کلاینت‌ها">
+    </td>
+  </tr>
 </table>
+
+</details>
 
 <div align="center">
 

@@ -12,35 +12,60 @@
 [![Telegram](https://img.shields.io/badge/Community-PANEL__ZEUS-2CA5E0.svg?style=for-the-badge&logo=telegram)](https://t.me/PANEL_ZEUS)
 </div>
 
+<p align="center">
+  <img src="https://raw.githubusercontent.com/panel-zeus/Z-E-U-S/refs/heads/main/photos/dark.png" width="100%" alt="Zeus Panel Main Dashboard">
+</p>
+
 <table width="100%">
-<tr>
-<td width="50%" valign="middle" align="center">
-<img src="https://raw.githubusercontent.com/panel-zeus/Z-E-U-S/refs/heads/main/photos/dark.png" width="100%" alt="Zeus Panel Dark Mode" style="border-radius: 12px;">
-</td>
-<td width="50%" valign="middle" align="center">
-<img src="https://raw.githubusercontent.com/panel-zeus/Z-E-U-S/refs/heads/main/photos/1.png" width="100%" alt="Zeus Panel Screenshot 1" style="border-radius: 12px;">
-</td>
-</tr>
-<tr>
-<td width="50%" valign="middle" align="center">
-<img src="https://raw.githubusercontent.com/panel-zeus/Z-E-U-S/refs/heads/main/photos/2.png" width="100%" alt="Zeus Panel Screenshot 2" style="border-radius: 12px;">
-</td>
-<td width="50%" valign="middle" align="center">
-<img src="https://raw.githubusercontent.com/panel-zeus/Z-E-U-S/refs/heads/main/photos/3.png" width="100%" alt="Zeus Panel Screenshot 3" style="border-radius: 12px;">
-</td>
-</tr>
+  <tr>
+    <td width="20%" valign="middle" align="center">
+      <img src="https://raw.githubusercontent.com/panel-zeus/Z-E-U-S/refs/heads/main/photos/bot.png" width="100%" alt="Telegram Bot Menu">
+    </td>
+    <td width="20%" valign="middle" align="center">
+      <img src="https://raw.githubusercontent.com/panel-zeus/Z-E-U-S/refs/heads/main/photos/wapp/1.jpg" width="100%" alt="MiniApp Dashboard">
+    </td>
+    <td width="20%" valign="middle" align="center">
+      <img src="https://raw.githubusercontent.com/panel-zeus/Z-E-U-S/refs/heads/main/photos/wapp/2.jpg" width="100%" alt="MiniApp Panels Manager">
+    </td>
+    <td width="20%" valign="middle" align="center">
+      <img src="https://raw.githubusercontent.com/panel-zeus/Z-E-U-S/refs/heads/main/photos/wapp/3.jpg" width="100%" alt="MiniApp Cloudflare Accounts">
+    </td>
+    <td width="20%" valign="middle" align="center">
+      <img src="https://raw.githubusercontent.com/panel-zeus/Z-E-U-S/refs/heads/main/photos/status.png" width="100%" alt="User Subscription Status Page">
+    </td>
+  </tr>
 </table>
- 
+
+<details align="center">
+<summary><b>📸 More Screenshots: Web Panel Editor & MiniApp Tools (6 Images)</b></summary>
+<br>
+
 <table width="100%">
-<tr>
-<td width="50%" valign="middle" align="center">
-<img src="https://raw.githubusercontent.com/panel-zeus/Z-E-U-S/refs/heads/main/photos/bot.png" width="100%" alt="Zeus Panel Status" style="border-radius: 12px;">
-</td>
-<td width="50%" valign="middle" align="center">
-<img src="https://raw.githubusercontent.com/panel-zeus/Z-E-U-S/refs/heads/main/photos/status.png" width="100%" alt="Zeus Panel Dark Mode" style="border-radius: 12px;">
-</td>
-</tr>
+  <tr>
+    <td width="33.3%" valign="middle" align="center">
+      <img src="https://raw.githubusercontent.com/panel-zeus/Z-E-U-S/refs/heads/main/photos/1.png" width="100%" alt="User Modal - Protocols & Quota">
+    </td>
+    <td width="33.3%" valign="middle" align="center">
+      <img src="https://raw.githubusercontent.com/panel-zeus/Z-E-U-S/refs/heads/main/photos/2.png" width="100%" alt="User Modal - Ports, Clean IPs & Fragment">
+    </td>
+    <td width="33.3%" valign="middle" align="center">
+      <img src="https://raw.githubusercontent.com/panel-zeus/Z-E-U-S/refs/heads/main/photos/3.png" width="100%" alt="User Modal - Multi-Location VIP Proxies">
+    </td>
+  </tr>
+  <tr>
+    <td width="33.3%" valign="middle" align="center">
+      <img src="https://raw.githubusercontent.com/panel-zeus/Z-E-U-S/refs/heads/main/photos/wapp/4.jpg" width="100%" alt="MiniApp - 1101 Account Repair">
+    </td>
+    <td width="33.3%" valign="middle" align="center">
+      <img src="https://raw.githubusercontent.com/panel-zeus/Z-E-U-S/refs/heads/main/photos/wapp/5.jpg" width="100%" alt="MiniApp - Panel Latency & Health Check">
+    </td>
+    <td width="33.3%" valign="middle" align="center">
+      <img src="https://raw.githubusercontent.com/panel-zeus/Z-E-U-S/refs/heads/main/photos/wapp/6.jpg" width="100%" alt="MiniApp - Client Downloads">
+    </td>
+  </tr>
 </table>
+
+</details>
 
 <div align="center">
 
