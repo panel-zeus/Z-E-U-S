@@ -8264,10 +8264,10 @@ const HTML_TEMPLATES = {
 						<input type="number" id="ip-count-input" min="1" max="500" value="20" dir="ltr" class="w-full px-3 py-2.5 bg-white dark:bg-slate-900 border border-gray-200 dark:border-amoled-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/50 text-xs font-mono text-center font-semibold text-gray-800 dark:text-zinc-100 shadow-sm transition">
 					</div>
 				</div>
-			</div>
-			<div class="pt-2 flex gap-3">
-				<button type="button" onclick="toggleIpSelectorModal(false)" class="flex-1 py-2.5 bg-transparent border-2 border-red-600 text-red-600 dark:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 font-bold rounded-xl text-xs sm:text-sm transition shadow-sm">لغو</button>
-				<button type="button" onclick="applySelectedIps()" class="flex-1 py-2.5 bg-transparent border-2 border-green-600 text-green-600 dark:text-green-500 hover:bg-green-50 dark:hover:bg-green-900/20 font-black rounded-xl text-xs sm:text-sm transition shadow-lg">دریافت</button>
+				<div class="pt-2 flex gap-3">
+					<button type="button" onclick="toggleIpSelectorModal(false)" class="flex-1 py-2.5 bg-transparent border-2 border-red-600 text-red-600 dark:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 font-bold rounded-xl text-xs sm:text-sm transition shadow-sm">لغو</button>
+					<button type="button" onclick="applySelectedIps()" class="flex-1 py-2.5 bg-transparent border-2 border-green-600 text-green-600 dark:text-green-500 hover:bg-green-50 dark:hover:bg-green-900/20 font-black rounded-xl text-xs sm:text-sm transition shadow-lg">دریافت</button>
+				</div>
 			</div>
 		</div>
 	</div>
@@ -8578,7 +8578,7 @@ const HTML_TEMPLATES = {
 		</button>
 	</div>
 </div>
-	<div id="token-modal" class="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/70 opacity-0 pointer-events-none transition-opacity duration-200 ease-out">
+	<div id="token-modal" class="fixed inset-0 z-[130] flex items-center justify-center p-4 bg-black/70 opacity-0 pointer-events-none transition-opacity duration-200 ease-out">
 		<div id="token-modal-card" class="w-full max-w-md bg-white dark:bg-amoled-card border border-gray-200 dark:border-amoled-border rounded-md shadow-2xl p-6 transform transition-all scale-95 opacity-0 duration-200">
 			<div class="flex justify-between items-center mb-6">
 				<div class="flex items-center gap-2">
@@ -9408,10 +9408,29 @@ ${COMMON_TOAST_HTML}
 				if (testBtn && !testBtn.disabled) { if (typeof window.testDirectPing === 'function') window.testDirectPing(); }
 			}
 		};
+		window.userModalSessionId = 0;
+		window.proxyTestSessionId = 0;
+		window.proxyTestAbortController = null;
+		function resetUserModalAsyncState() {
+			window.userModalSessionId++;
+			window.proxyTestSessionId++;
+			if (window.proxyTestAbortController) {
+				window.proxyTestAbortController.abort();
+				window.proxyTestAbortController = null;
+			}
+			window.proxyPingMap = {};
+		}
 		function toggleModal(show) {
 			setModalState('user-modal', show);
 			if (typeof window.switchUserTab === 'function') window.switchUserTab('tab-user-info');
 			if (!show) {
+				resetUserModalAsyncState();
+				window.proxyFieldsData = [""];
+				window.activeProxyIndex = 0;
+				const testProxyBtn = document.getElementById('test-user-proxy-btn');
+				if (testProxyBtn) { testProxyBtn.disabled = false; testProxyBtn.innerText = 'تست پـروکـسـی'; }
+				const testProxyResult = document.getElementById('test-user-proxy-result');
+				if (testProxyResult) { testProxyResult.innerText = ''; }
 				isEditMode = false;
 				editingUsername = '';
 				window.editingUserIata = null; 
@@ -9704,6 +9723,16 @@ ${COMMON_TOAST_HTML}
 			}
 		}
 let tgProxyRefreshTimer = null;
+let tgProxyStatusRequestId = 0;
+let tgProxyAbortController = null;
+function setTgProxyActiveView(view) {
+	const loadingEl = document.getElementById('tg-modal-loading');
+	const createView = document.getElementById('tg-create-view');
+	const manageView = document.getElementById('tg-manage-view');
+	if (loadingEl) loadingEl.classList.toggle('hidden', view !== 'loading');
+	if (createView) createView.classList.toggle('hidden', view !== 'create');
+	if (manageView) manageView.classList.toggle('hidden', view !== 'manage');
+}
 function toggleTgProxyModal(show) {
 	setModalState('tg-proxy-modal', show);
 	if (show) {
@@ -9721,6 +9750,8 @@ function toggleTgProxyModal(show) {
 		}, 3000);
 	} else {
 		if (tgProxyRefreshTimer) { clearInterval(tgProxyRefreshTimer); tgProxyRefreshTimer = null; }
+		if (tgProxyAbortController) { try { tgProxyAbortController.abort(); } catch (e) { } tgProxyAbortController = null; }
+		tgProxyStatusRequestId++;
 	}
 }
 async function openTgProxyModal() {
@@ -9729,18 +9760,24 @@ async function openTgProxyModal() {
 }
 window.currentTgProxyData = null;
 async function loadTgProxyStatus(isSilent = false) {
+	const reqId = ++tgProxyStatusRequestId;
+	if (tgProxyAbortController) {
+		try { tgProxyAbortController.abort(); } catch (e) { }
+	}
+	const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+	tgProxyAbortController = controller;
 	const loadingEl = document.getElementById('tg-modal-loading');
-	const createView = document.getElementById('tg-create-view');
-	const manageView = document.getElementById('tg-manage-view');
 	if (!isSilent) {
-		if (loadingEl) loadingEl.classList.remove('hidden');
-		if (createView) createView.classList.add('hidden');
-		if (manageView) manageView.classList.add('hidden');
+		if (loadingEl) {
+			loadingEl.innerHTML = '<div class="inline-block w-8 h-8 border-2 border-sky-500 border-t-transparent rounded-full animate-spin"></div><p class="text-xs text-gray-500 dark:text-zinc-400 mt-3 font-medium">در حال دریافت وضعیت پروکسی...</p>';
+		}
+		setTgProxyActiveView('loading');
 	}
 	try {
-		const res = await fetch('/api/telegram-proxy/status');
+		const res = await fetch('/api/telegram-proxy/status', controller ? { signal: controller.signal } : undefined);
 		if (!res.ok) throw new Error('خطا در دریافت وضعیت');
 		const data = await res.json();
+		if (reqId !== tgProxyStatusRequestId) return;
 		window.currentTgProxyData = data;
 		if (data.onlineCount && data.onlineCount > 0) { window.lastTgProxyOnlineTime = Date.now(); }
 		const isTgOnlineSmooth = (data.onlineCount && data.onlineCount > 0) || (window.lastTgProxyOnlineTime && (Date.now() - window.lastTgProxyOnlineTime <= 10000));
@@ -9750,7 +9787,6 @@ async function loadTgProxyStatus(isSilent = false) {
 				tgHeaderDot.classList.remove('hidden');
 			} else { tgHeaderDot.classList.add('hidden'); }
 		}
-		if (loadingEl) loadingEl.classList.add('hidden');
 		const tokenBadge = document.getElementById('tg-token-badge');
 		const tokenActions = document.getElementById('tg-token-actions');
 		if (tokenBadge) {
@@ -9765,7 +9801,7 @@ async function loadTgProxyStatus(isSilent = false) {
 			}
 		}
 		if (data.configured && data.secret) {
-			if (manageView) manageView.classList.remove('hidden');
+			setTgProxyActiveView('manage');
 			const isRunning = data.status === 'active';
 			const statusCard = document.getElementById('tg-status-card');
 			const statusDot = document.getElementById('tg-status-dot');
@@ -9809,14 +9845,27 @@ async function loadTgProxyStatus(isSilent = false) {
 			const onlineEl = document.getElementById('tg-stat-online');
 			if (onlineEl) { const count = data.onlineCount || 0; onlineEl.innerText = count > 0 ? (count + ' اتصال فعال') : 'آماده اتصال'; }
 		} else {
-			if (createView) createView.classList.remove('hidden');
+			setTgProxyActiveView('create');
+			const editBox = document.getElementById('tg-secret-edit-box');
+			if (editBox) editBox.classList.add('hidden');
+			const linkInput = document.getElementById('tg-proxy-link-input');
+			if (linkInput) linkInput.value = '';
 			const nameInput = document.getElementById('tg-input-name');
 			if (nameInput && !nameInput.value) { nameInput.value = 'Zeus-TG-Proxy'; }
 			const secretInput = document.getElementById('tg-input-secret');
 			if (secretInput && !secretInput.value) { generateRandomTgSecret(); }
 		}
 	} catch (err) {
-		if (!isSilent && loadingEl) loadingEl.innerHTML = '<div class="text-xs text-red-500 font-bold">خطا در بارگذاری اطلاعات: ' + (err.message || 'ناشناخته') + '</div>';
+		if (err && err.name === 'AbortError') return;
+		if (reqId !== tgProxyStatusRequestId) return;
+		if (!isSilent && loadingEl) {
+			setTgProxyActiveView('loading');
+			loadingEl.innerHTML = '<div class="text-xs text-red-500 font-bold">خطا در بارگذاری اطلاعات: ' + (err.message || 'ناشناخته') + '</div>';
+		}
+	} finally {
+		if (tgProxyAbortController === controller) {
+			tgProxyAbortController = null;
+		}
 	}
 }
 async function resetTgProxyStats() {
@@ -9967,8 +10016,31 @@ async function testTgHealth() {
 		if (typeof showToast === 'function') showToast('خطا در تست سلامت پروکسی', 'error');
 	}
 }
+function createScopedAbort(parentController, timeoutMs) {
+	const ctrl = new AbortController();
+	let tid = null;
+	const onParentAbort = () => ctrl.abort();
+	if (parentController && parentController.signal) {
+		if (parentController.signal.aborted) { ctrl.abort(); }
+		else { parentController.signal.addEventListener('abort', onParentAbort, { once: true }); }
+	}
+	if (timeoutMs > 0) { tid = setTimeout(() => ctrl.abort(), timeoutMs); }
+	return {
+		signal: ctrl.signal,
+		cleanup: () => {
+			if (tid) clearTimeout(tid);
+			if (parentController && parentController.signal) {
+				parentController.signal.removeEventListener('abort', onParentAbort);
+			}
+		}
+	};
+}
 let activeRocketBtn = null;
-function toggleRocketModal(show) { setModalState('rocket-modal', show); }
+window.rocketModalSeq = 0;
+function toggleRocketModal(show) {
+	if (!show) window.rocketModalSeq++;
+	setModalState('rocket-modal', show);
+}
 const PLACEMENT_DATA = {
 		  "providers": {
 			"AWS": { "regions": [ {"id": "us-east-1", "name": "US East (N. Virginia)", "country": "United States", "emoji": "🇺🇸", "location": "Northern Virginia"}, {"id": "us-east-2", "name": "US East (Ohio)", "country": "United States", "emoji": "🇺🇸", "location": "Ohio"}, {"id": "us-west-1", "name": "US West (N. California)", "country": "United States", "emoji": "🇺🇸", "location": "Northern California"}, {"id": "us-west-2", "name": "US West (Oregon)", "country": "United States", "emoji": "🇺🇸", "location": "Oregon"}, {"id": "af-south-1", "name": "Africa (Cape Town)", "country": "South Africa", "emoji": "🇿🇦", "location": "Cape Town"}, {"id": "ap-east-1", "name": "Asia Pacific (Hong Kong)", "country": "Hong Kong", "emoji": "🇭🇰", "location": "Hong Kong"}, {"id": "ap-east-2", "name": "Asia Pacific (Taipei)", "country": "Taiwan", "emoji": "🇹🇼", "location": "Taipei"}, {"id": "ap-south-1", "name": "Asia Pacific (Mumbai)", "country": "India", "emoji": "🇮🇳", "location": "Mumbai"}, {"id": "ap-south-2", "name": "Asia Pacific (Hyderabad)", "country": "India", "emoji": "🇮🇳", "location": "Hyderabad"}, {"id": "ap-southeast-1", "name": "Asia Pacific (Singapore)", "country": "Singapore", "emoji": "🇸🇬", "location": "Singapore"}, {"id": "ap-southeast-2", "name": "Asia Pacific (Sydney)", "country": "Australia", "emoji": "🇦🇺", "location": "Sydney"}, {"id": "ap-southeast-3", "name": "Asia Pacific (Jakarta)", "country": "Indonesia", "emoji": "🇮🇩", "location": "Jakarta"}, {"id": "ap-southeast-4", "name": "Asia Pacific (Melbourne)", "country": "Australia", "emoji": "🇦🇺", "location": "Melbourne"}, {"id": "ap-southeast-5", "name": "Asia Pacific (Malaysia)", "country": "Malaysia", "emoji": "🇲🇾", "location": "Malaysia"}, {"id": "ap-southeast-6", "name": "Asia Pacific (New Zealand)", "country": "New Zealand", "emoji": "🇳🇿", "location": "New Zealand"}, {"id": "ap-southeast-7", "name": "Asia Pacific (Thailand)", "country": "Thailand", "emoji": "🇹🇭", "location": "Thailand"}, {"id": "ap-northeast-1", "name": "Asia Pacific (Tokyo)", "country": "Japan", "emoji": "🇯🇵", "location": "Tokyo"}, {"id": "ap-northeast-2", "name": "Asia Pacific (Seoul)", "country": "South Korea", "emoji": "🇰🇷", "location": "Seoul"}, {"id": "ap-northeast-3", "name": "Asia Pacific (Osaka)", "country": "Japan", "emoji": "🇯🇵", "location": "Osaka"}, {"id": "ca-central-1", "name": "Canada (Central)", "country": "Canada", "emoji": "🇨🇦", "location": "Montreal"}, {"id": "ca-west-1", "name": "Canada West (Calgary)", "country": "Canada", "emoji": "🇨🇦", "location": "Calgary"}, {"id": "eu-central-1", "name": "Europe (Frankfurt)", "country": "Germany", "emoji": "🇩🇪", "location": "Frankfurt"}, {"id": "eu-central-2", "name": "Europe (Zurich)", "country": "Switzerland", "emoji": "🇨🇭", "location": "Zurich"}, {"id": "eu-west-1", "name": "Europe (Ireland)", "country": "Ireland", "emoji": "🇮🇪", "location": "Dublin"}, {"id": "eu-west-2", "name": "Europe (London)", "country": "United Kingdom", "emoji": "🇬🇧", "location": "London"}, {"id": "eu-west-3", "name": "Europe (Paris)", "country": "France", "emoji": "🇫🇷", "location": "Paris"}, {"id": "eu-north-1", "name": "Europe (Stockholm)", "country": "Sweden", "emoji": "🇸🇪", "location": "Stockholm"}, {"id": "eu-south-1", "name": "Europe (Milan)", "country": "Italy", "emoji": "🇮🇹", "location": "Milan"}, {"id": "eu-south-2", "name": "Europe (Spain)", "country": "Spain", "emoji": "🇪🇸", "location": "Aragon"}, {"id": "il-central-1", "name": "Israel (Tel Aviv)", "country": "Israel", "emoji": "🇮🇱", "location": "Tel Aviv"}, {"id": "me-central-1", "name": "Middle East (UAE)", "country": "United Arab Emirates", "emoji": "🇦🇪", "location": "Abu Dhabi"}, {"id": "me-south-1", "name": "Middle East (Bahrain)", "country": "Bahrain", "emoji": "🇧🇭", "location": "Bahrain"}, {"id": "mx-central-1", "name": "Mexico (Central)", "country": "Mexico", "emoji": "🇲🇽", "location": "Queretaro"}, {"id": "sa-east-1", "name": "South America (São Paulo)", "country": "Brazil", "emoji": "🇧🇷", "location": "Sao Paulo"} ] },
@@ -10008,9 +10080,35 @@ const PLACEMENT_DATA = {
 				}
 			} catch(e) {}
 		}
-		function togglePlacementModal(show) { setModalState('placement-modal', show); }
+		window.placementRequestSeq = 0;
+		window.placementAbortController = null;
+		window.placementManualHideTimer = null;
+		window.placementManualShowTimer = null;
+		window.placementSelectBtnTimer = null;
+		function clearPlacementTimers() {
+			if (window.placementManualHideTimer) { clearTimeout(window.placementManualHideTimer); window.placementManualHideTimer = null; }
+			if (window.placementManualShowTimer) { clearTimeout(window.placementManualShowTimer); window.placementManualShowTimer = null; }
+			if (window.placementSelectBtnTimer) { clearTimeout(window.placementSelectBtnTimer); window.placementSelectBtnTimer = null; }
+		}
+		function togglePlacementModal(show) {
+			if (!show) {
+				window.placementRequestSeq++;
+				if (window.placementAbortController) { window.placementAbortController.abort(); window.placementAbortController = null; }
+				clearPlacementTimers();
+			}
+			setModalState('placement-modal', show);
+		}
 		async function openPlacementModal(providedToken = null) {
 			toggleSettingsModal(false);
+			const reqSeq = ++window.placementRequestSeq;
+			if (window.placementAbortController) { window.placementAbortController.abort(); }
+			const abortController = new AbortController();
+			window.placementAbortController = abortController;
+			clearPlacementTimers();
+			document.querySelectorAll('input[name="placement-mode"]').forEach(r => r.checked = false);
+			const selectedInput = document.getElementById('selected-placement-region');
+			if (selectedInput) selectedInput.value = '';
+			togglePlacementManualMode(true);
 			togglePlacementModal(true);
 			const btn = document.getElementById('placement-submit-btn');
 			const defaultBtnHtml = '<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path></svg> اعمال تغییرات و دیپلوی';
@@ -10020,10 +10118,13 @@ const PLACEMENT_DATA = {
 				const fetchOpts = providedToken ? {
 					method: 'POST',
 					headers: { 'Content-Type': 'application/json' },
-					body: JSON.stringify({ cf_token: providedToken })
-				} : { method: 'GET' };
+					body: JSON.stringify({ cf_token: providedToken }),
+					signal: abortController.signal
+				} : { method: 'GET', signal: abortController.signal };
 				const res = await fetch('/api/placement-status', fetchOpts);
+				if (reqSeq !== window.placementRequestSeq) return;
 				const data = await res.json();
+				if (reqSeq !== window.placementRequestSeq) return;
 				if (res.status === 400 && (data.error === "TOKEN_REQUIRED" || data.error === "INVALID_TOKEN")) {
 					togglePlacementModal(false);
 					window.pendingCoreAction = 'fetch-placement-status';
@@ -10043,12 +10144,12 @@ const PLACEMENT_DATA = {
 				document.getElementById('selected-placement-region').value = currentRegion === 'none' ? '' : currentRegion;
 				if (currentRegion === 'none' || currentRegion === 'off') {
 					document.querySelectorAll('input[name="placement-mode"]').forEach(r => r.checked = false);
-					togglePlacementManualMode();
+					togglePlacementManualMode(true);
 					showToast('ℹ️ در حال حاضر ریجن ورکر روی حالت خاموش (Off) است.');
 				} else if (currentRegion === 'smart') {
 					const smartOption = document.querySelector('input[name="placement-mode"][value="smart"]');
 					if (smartOption) smartOption.checked = true;
-					togglePlacementManualMode();
+					togglePlacementManualMode(true);
 				} else {
 					let finalRegion = currentRegion;
 					let foundInList = false;
@@ -10072,9 +10173,11 @@ const PLACEMENT_DATA = {
 					}
 					const manualOption = document.querySelector('input[name="placement-mode"][value="manual"]');
 					if (manualOption) manualOption.checked = true;
-					togglePlacementManualMode();
+					togglePlacementManualMode(true);
 					if (foundInList) {
-						setTimeout(() => {
+						window.placementSelectBtnTimer = setTimeout(() => {
+							window.placementSelectBtnTimer = null;
+							if (reqSeq !== window.placementRequestSeq) return;
 							const targetBtn = document.querySelector('.placement-region-btn[data-region="' + finalRegion + '"]');
 							if (targetBtn) {
 								targetBtn.click();
@@ -10087,14 +10190,20 @@ const PLACEMENT_DATA = {
 					}
 				}
 			} catch (err) {
+				if (err && err.name === 'AbortError') return;
 				console.error("خطا در دریافت وضعیت ریجن");
 			} finally {
-				btn.innerHTML = defaultBtnHtml;
-				const currentVal = document.getElementById('selected-placement-region').value;
-				btn.disabled = !currentVal;
+				if (window.placementAbortController === abortController) { window.placementAbortController = null; }
+				if (reqSeq === window.placementRequestSeq) {
+					btn.innerHTML = defaultBtnHtml;
+					const currentVal = document.getElementById('selected-placement-region').value;
+					btn.disabled = !currentVal;
+				}
 			}
 		}
-		function togglePlacementManualMode() {
+		function togglePlacementManualMode(immediate = false) {
+			if (window.placementManualHideTimer) { clearTimeout(window.placementManualHideTimer); window.placementManualHideTimer = null; }
+			if (window.placementManualShowTimer) { clearTimeout(window.placementManualShowTimer); window.placementManualShowTimer = null; }
 			const checkedInput = document.querySelector('input[name="placement-mode"]:checked');
 			const mode = checkedInput ? checkedInput.value : 'none';
 			const manualSection = document.getElementById('placement-manual-section');
@@ -10110,16 +10219,37 @@ const PLACEMENT_DATA = {
 			});
 			if (mode === 'manual') {
 				manualSection.classList.remove('hidden');
-				setTimeout(() => manualSection.classList.remove('opacity-0', '-translate-y-2'), 10);
+				if (immediate) {
+					manualSection.classList.remove('opacity-0', '-translate-y-2');
+				} else {
+					window.placementManualShowTimer = setTimeout(() => {
+						window.placementManualShowTimer = null;
+						manualSection.classList.remove('opacity-0', '-translate-y-2');
+					}, 10);
+				}
 				renderPlacementRegions();
 			} else if (mode === 'smart') {
 				manualSection.classList.add('opacity-0', '-translate-y-2');
-				setTimeout(() => manualSection.classList.add('hidden'), 300);
+				if (immediate) {
+					manualSection.classList.add('hidden');
+				} else {
+					window.placementManualHideTimer = setTimeout(() => {
+						window.placementManualHideTimer = null;
+						manualSection.classList.add('hidden');
+					}, 300);
+				}
 				hiddenInput.value = 'smart';
 				submitBtn.disabled = false;
 			} else {
 				manualSection.classList.add('opacity-0', '-translate-y-2');
-				setTimeout(() => manualSection.classList.add('hidden'), 300);
+				if (immediate) {
+					manualSection.classList.add('hidden');
+				} else {
+					window.placementManualHideTimer = setTimeout(() => {
+						window.placementManualHideTimer = null;
+						manualSection.classList.add('hidden');
+					}, 300);
+				}
 				hiddenInput.value = '';
 				submitBtn.disabled = true;
 			}
@@ -10206,6 +10336,7 @@ const PLACEMENT_DATA = {
 		}
 async function openRocketModal(btn) {
 	if (window.isQuickCreateLocked) { showToast('⏳ لطفاً کمی صبر کنید...', 'error'); return; }
+	const reqSeq = ++window.rocketModalSeq;
 	activeRocketBtn = btn;
 	toggleRocketModal(true);
 	const grid = document.getElementById('rocket-country-grid');
@@ -10213,8 +10344,9 @@ async function openRocketModal(btn) {
 	const hiddenInput = document.getElementById('rocket-selected-country');
 	grid.innerHTML = '<div class="col-span-full text-center text-[11px] font-bold text-gray-500 py-4">در حال بررسی مخزن...</div>';
 	hiddenInput.value = '';
-	submitBtn.disabled = false;
+	submitBtn.disabled = true;
 	if (!cachedVipList || cachedVipList.length === 0) { await initVipCache(); }
+	if (reqSeq !== window.rocketModalSeq) return;
 	if (cachedVipList && cachedVipList.length > 0) {
 		grid.innerHTML = '';
 		cachedVipList.forEach(function(country) {
@@ -10233,7 +10365,11 @@ async function openRocketModal(btn) {
 			btnObj.innerHTML = '<span class="text-xl leading-none flex items-center justify-center pointer-events-none" style="forced-color-adjust:none;color-scheme:light;isolation:isolate;">' + flag + '</span><span class="text-[9px] font-black text-gray-700 dark:text-zinc-300 uppercase">' + country + '</span>';
 			grid.appendChild(btnObj);
 		});
-	} else { grid.innerHTML = '<div class="col-span-full text-center text-[11px] font-bold text-red-500 py-4">پـروکـسـی اختصاصی موجود نیست</div>'; }
+		submitBtn.disabled = false;
+	} else {
+		grid.innerHTML = '<div class="col-span-full text-center text-[11px] font-bold text-red-500 py-4">پـروکـسـی اختصاصی موجود نیست</div>';
+		submitBtn.disabled = true;
+	}
 }
 async function executeRocketCreate() {
 	const hiddenInput = document.getElementById('rocket-selected-country');
@@ -10327,6 +10463,7 @@ async function executeRocketCreate() {
 	}
 }
 		function openCreateModal() {
+			resetUserModalAsyncState();
 			isEditMode = false;
 			editingUsername = '';
 			document.getElementById('modal-title').innerText = 'ایجاد کاربر جدید';
@@ -10469,23 +10606,43 @@ async function executeRocketCreate() {
 			}
 		}
 		async function restartCore() { await handleCoreAction('restart'); }
+		const DEFAULT_USERS_LOADING_HTML = '<span class="text-gray-500 dark:text-gray-400">در حال بارگذاری کاربران...</span>';
+		window.loadUsersSeq = 0;
+		window.loadUsersAbortController = null;
+		window.loadUsersExplicitInFlight = false;
 		async function loadUsers(silent = false) {
 			if (window.isDraggingRow) return; 
+			if (silent && window.loadUsersExplicitInFlight) return;
+			if (!silent) window.loadUsersExplicitInFlight = true;
+			const reqSeq = ++window.loadUsersSeq;
+			if (window.loadUsersAbortController) { window.loadUsersAbortController.abort(); }
+			const abortController = new AbortController();
+			window.loadUsersAbortController = abortController;
 			const loadingState = document.getElementById('loading-state');
 			const tableContainer = document.getElementById('users-table-container');
 			const emptyState = document.getElementById('empty-state');
 			if (!silent) {
+				loadingState.innerHTML = DEFAULT_USERS_LOADING_HTML;
 				loadingState.classList.remove('hidden');
 				tableContainer.classList.add('hidden');
 				emptyState.classList.add('hidden');
 			}
 			try {
-				const res = await fetch('/api/users?t=' + Date.now());
+				const res = await fetch('/api/users?t=' + Date.now(), { signal: abortController.signal });
+				if (reqSeq !== window.loadUsersSeq) return;
 				if (!res.ok) throw new Error();
 				const data = await res.json();
+				if (reqSeq !== window.loadUsersSeq) return;
 				renderUsersUI(data);
 			} catch (err) {
+				if (err && err.name === 'AbortError') return;
+				if (reqSeq !== window.loadUsersSeq) return;
 				if (!silent) { loadingState.innerHTML = '<span class="text-red-500">خطا در دریافت اطلاعات از سرور</span>'; }
+			} finally {
+				if (window.loadUsersAbortController === abortController) {
+					window.loadUsersAbortController = null;
+					if (!silent) window.loadUsersExplicitInFlight = false;
+				}
 			}
 		}
 		function renderUsersUI(data) {
@@ -10568,6 +10725,8 @@ async function executeRocketCreate() {
 				document.getElementById('stat-cf-total').innerText = cfTotal >= 1000000 ? (cfTotal / 1000000).toFixed(2) + 'M' : (cfTotal >= 1000 ? (cfTotal / 1000).toFixed(1) + 'k' : cfTotal);
 				const progressPercent = Math.min((cfRequests / 100000) * 100, 100);
 				document.getElementById('stat-cf-progress').style.width = progressPercent + '%';
+				const ls = document.getElementById('loading-state');
+				if (ls) ls.innerHTML = DEFAULT_USERS_LOADING_HTML;
 				filterAndRenderUsers();
 			} catch (err) {
 				document.getElementById('loading-state').innerHTML = '<span class="text-red-500">خطا در پردازش اطلاعات کاربران</span>';
@@ -11626,6 +11785,7 @@ window.removeProxyFieldUI = function(idx) {
 		window.swapProxyFieldUI = async function(idx, triggerGlobalTest = true) {
 			const currentProxy = (window.proxyFieldsData[idx] || "").trim();
 			if (!currentProxy) { if (triggerGlobalTest) alert("⚠️ ابتدا یک پروکسی در این فیلد وارد کنید!"); return; }
+			const myModalSeq = window.userModalSessionId;
 			const icon = document.getElementById('swap-icon-' + idx);
 			if (icon) icon.classList.add('animate-spin');
 			let usedCountries = new Set();
@@ -11639,19 +11799,21 @@ window.removeProxyFieldUI = function(idx) {
 				}
 			} catch(e) {}
 			let countryCode = "UN";
+			const swapScope = createScopedAbort(triggerGlobalTest ? null : window.proxyTestAbortController, 2000);
 			try {
-				const controller = new AbortController();
-				const timeoutId = setTimeout(() => controller.abort(), 2000);
 				const res = await fetch('/api/test-proxy', {
 					method: 'POST',
 					headers: { 'Content-Type': 'application/json' },
 					body: JSON.stringify({ proxy: currentProxy }),
-					signal: controller.signal
+					signal: swapScope.signal
 				});
-				clearTimeout(timeoutId);
 				const data = await res.json();
 				if (res.ok && data.success && data.country && data.country !== "UN") { countryCode = data.country.toUpperCase(); }
-			} catch(e) {}
+			} catch(e) {} finally {
+				swapScope.cleanup();
+				if (icon) icon.classList.remove('animate-spin');
+			}
+			if (myModalSeq !== window.userModalSessionId) return;
 			let candidateProxies = [];
 			let isRandomFallback = false;
 			if (countryCode !== "UN" && !usedCountries.has(countryCode)) {
@@ -11841,7 +12003,11 @@ function downloadZeusSource() {
 			btn.addEventListener('touchcancel', stopHold);
 			btn.addEventListener('click', handleSecretClick);
 		}
+	window.activeGlobalMsgVersion = null;
+	window.isCheckingGlobalMessage = false;
 	async function checkGlobalMessage() {
+		if (window.isCheckingGlobalMessage) return;
+		window.isCheckingGlobalMessage = true;
 		try {
 			const res = await fetchWithFallbackUI('message.txt?t=' + Date.now());
 			if (!res || !res.ok) { checkLoopWarning(); return; }
@@ -11852,7 +12018,8 @@ function downloadZeusSource() {
 			if (!firstLine.startsWith('VERSION=')) { checkLoopWarning(); return; }
 			const version = firstLine.split('=')[1].trim();
 			const content = lines.slice(1).join('\\n').trim();
-			if (window.zeus_global_msg_version !== version) {
+			if (window.zeus_global_msg_version !== version && window.activeGlobalMsgVersion !== version) {
+				window.activeGlobalMsgVersion = version;
 				document.getElementById('global-message-content').innerHTML = content;
 				setModalState('global-message-modal', true);
 				const oldBtn = document.getElementById('global-message-close-btn');
@@ -11863,10 +12030,14 @@ function downloadZeusSource() {
 				attachHoldButtonAction(btn, prog, 1000, () => {
 					setModalState('global-message-modal', false);
 					window.zeus_global_msg_version = version;
+					window.activeGlobalMsgVersion = null;
 					setTimeout(() => checkLoopWarning(), 500);
 				});
-			} else { checkLoopWarning(); }
-		} catch (err) {}
+			} else if (window.zeus_global_msg_version === version) { checkLoopWarning(); }
+		} catch (err) {
+		} finally {
+			window.isCheckingGlobalMessage = false;
+		}
 	}
 	async function loadPanelAds() {
 		const banner = document.getElementById('panel-ads-banner');
@@ -12017,6 +12188,7 @@ function editUser(encodedUsername) {
 	const username = decodeURIComponent(encodedUsername);
 	const user = window.allUsers.find(u => u.username === username);
 	if (!user) { alert('کاربر یافت نشد!'); return; }
+	resetUserModalAsyncState();
 	isEditMode = true;
 	editingUsername = username;
 	window.editingUserIata = user.user_proxy_iata || null;
@@ -12247,6 +12419,12 @@ async function testUserSocksProxy() {
 		if (num <= 4000) return Math.round(num / 5);
 		return Math.round(num / 5);
 	};
+	const myModalSeq = window.userModalSessionId;
+	const myTestSeq = ++window.proxyTestSessionId;
+	if (window.proxyTestAbortController) { window.proxyTestAbortController.abort(); }
+	const testAbortController = new AbortController();
+	window.proxyTestAbortController = testAbortController;
+	const isStale = () => myTestSeq !== window.proxyTestSessionId || myModalSeq !== window.userModalSessionId || testAbortController.signal.aborted;
 	const btn = document.getElementById('test-user-proxy-btn');
 	if (btn) { btn.disabled = true; btn.innerText = 'صبر کنید...'; }
 	window.proxyPingMap = {};
@@ -12262,111 +12440,126 @@ async function testUserSocksProxy() {
 			} else { resultSpan.innerText = 'در صف تست...'; resultSpan.className = 'text-[10px] font-bold text-gray-500 block mt-0.5 text-center'; }
 		}
 	}
-	const testTasks = window.proxyFieldsData.map(async (val, idx) => {
-		let proxyStr = (val || "").trim();
-		if (!proxyStr) return;
-		let resultSpan = document.getElementById('proxy-ping-label-' + idx);
-		if (resultSpan) { resultSpan.innerText = 'در حال تست...'; resultSpan.className = 'text-[10px] font-bold text-amber-500 block mt-0.5 text-center'; }
-		const checkProxy = async (targetProxy) => {
-			const controller = new AbortController();
-			const timeoutId = setTimeout(() => controller.abort(), 10000);
-			try {
-				const res = await fetch('/api/test-proxy', {
-					method: 'POST',
-					headers: { 'Content-Type': 'application/json' },
-					body: JSON.stringify({ proxy: targetProxy }),
-					signal: controller.signal
-				});
-				clearTimeout(timeoutId);
-				const data = await res.json();
-				return { ok: res.ok, data };
-			} catch (e) {
-				clearTimeout(timeoutId);
-				return { ok: false, error: e.name === 'AbortError' ? 'تایم‌اوت' : 'خطا در ارتباط' };
-			}
-		};
-		let testRes = await checkProxy(proxyStr);
-		if (testRes.ok && testRes.data.success) {
-			resultSpan = document.getElementById('proxy-ping-label-' + idx);
-			const flag = typeof getFlagEmoji === 'function' ? getFlagEmoji(testRes.data.country) : '🌐';
-			if (resultSpan) {
-				const displayPing = calcDisplayPing(testRes.data.ping);
-				resultSpan.innerHTML = flag + ' پینگ: ' + displayPing + 'ms';
-				resultSpan.className = 'text-[10px] font-bold text-green-600 block mt-0.5 text-center';
-				window.proxyPingMap[proxyStr] = { text: resultSpan.innerHTML, className: resultSpan.className };
-			}
-			if (testRes.data.country) {
+	try {
+		const testTasks = window.proxyFieldsData.map(async (val, idx) => {
+			if (isStale()) return;
+			let proxyStr = (val || "").trim();
+			if (!proxyStr) return;
+			let resultSpan = document.getElementById('proxy-ping-label-' + idx);
+			if (resultSpan) { resultSpan.innerText = 'در حال تست...'; resultSpan.className = 'text-[10px] font-bold text-amber-500 block mt-0.5 text-center'; }
+			const checkProxy = async (targetProxy) => {
+				const checkScope = createScopedAbort(testAbortController, 10000);
 				try {
-					let cache = JSON.parse(localStorage.getItem('proxy_flag_cache_v2') || '{}');
-					cache[proxyStr] = testRes.data.country.toUpperCase();
-					localStorage.setItem('proxy_flag_cache_v2', JSON.stringify(cache));
-					if (typeof window.renderProxyFieldsUI === 'function') window.renderProxyFieldsUI();
-				} catch(e) {}
-			}
-		} else {
-			if (isAutoRotate) {
-				let swapSuccess = false;
-				let maxSwaps = 15; 
-				let currentBadProxy = proxyStr;
-				for (let attempt = 1; attempt <= maxSwaps; attempt++) {
-					resultSpan = document.getElementById('proxy-ping-label-' + idx);
-					if (resultSpan) {
-						resultSpan.innerText = 'خراب بود، تعویض (' + attempt + '/' + maxSwaps + ')...';
-						resultSpan.className = 'text-[10px] font-bold text-blue-500 block mt-0.5 text-center';
+					const res = await fetch('/api/test-proxy', {
+						method: 'POST',
+						headers: { 'Content-Type': 'application/json' },
+						body: JSON.stringify({ proxy: targetProxy }),
+						signal: checkScope.signal
+					});
+					const data = await res.json();
+					return { ok: res.ok, data };
+				} catch (e) {
+					if (e && e.name === 'AbortError' && testAbortController.signal.aborted) {
+						return { aborted: true };
 					}
-					await window.swapProxyFieldUI(idx, false);
-					const newProxy = (window.proxyFieldsData[idx] || "").trim();
-					if (newProxy && newProxy !== currentBadProxy) {
-						resultSpan = document.getElementById('proxy-ping-label-' + idx);
-						if (resultSpan) {
-							resultSpan.innerText = 'تست پروکسی جدید (' + attempt + ')...';
-							resultSpan.className = 'text-[10px] font-bold text-amber-500 block mt-0.5 text-center';
-						}
-						let newTestRes = await checkProxy(newProxy);
-						resultSpan = document.getElementById('proxy-ping-label-' + idx);
-						if (newTestRes.ok && newTestRes.data.success) {
-							const flag = typeof getFlagEmoji === 'function' ? getFlagEmoji(newTestRes.data.country) : '🌐';
-							if (resultSpan) {
-								const displayPing = calcDisplayPing(newTestRes.data.ping);
-								resultSpan.innerHTML = flag + ' پینگ: ' + displayPing + 'ms';
-								resultSpan.className = 'text-[10px] font-bold text-green-600 block mt-0.5 text-center';
-								window.proxyPingMap[newProxy] = { text: resultSpan.innerHTML, className: resultSpan.className };
-							}
-							if (newTestRes.data.country) {
-								try {
-									let cache = JSON.parse(localStorage.getItem('proxy_flag_cache_v2') || '{}');
-									cache[newProxy] = newTestRes.data.country.toUpperCase();
-									localStorage.setItem('proxy_flag_cache_v2', JSON.stringify(cache));
-									if (typeof window.renderProxyFieldsUI === 'function') window.renderProxyFieldsUI();
-								} catch(e) {}
-							}
-							swapSuccess = true;
-							break; 
-						} else { currentBadProxy = newProxy; }
-					} else { break; }
+					return { ok: false, error: e && e.name === 'AbortError' ? 'تایم‌اوت' : 'خطا در ارتباط' };
+				} finally {
+					checkScope.cleanup();
 				}
-				if (!swapSuccess) {
-					resultSpan = document.getElementById('proxy-ping-label-' + idx);
-					if (resultSpan) {
-						resultSpan.innerText = 'چندین پروکسی جایگزین تست شد اما همه خراب بودند!';
-						resultSpan.className = 'text-[10px] font-bold text-red-500 block mt-0.5 text-center';
-						const finalProxy = (window.proxyFieldsData[idx] || "").trim();
-						window.proxyPingMap[finalProxy] = { text: resultSpan.innerText, className: resultSpan.className };
-					}
+			};
+			let testRes = await checkProxy(proxyStr);
+			if (isStale() || testRes.aborted) return;
+			if (testRes.ok && testRes.data.success) {
+				resultSpan = document.getElementById('proxy-ping-label-' + idx);
+				const flag = typeof getFlagEmoji === 'function' ? getFlagEmoji(testRes.data.country) : '🌐';
+				if (resultSpan) {
+					const displayPing = calcDisplayPing(testRes.data.ping);
+					resultSpan.innerHTML = flag + ' پینگ: ' + displayPing + 'ms';
+					resultSpan.className = 'text-[10px] font-bold text-green-600 block mt-0.5 text-center';
+					window.proxyPingMap[proxyStr] = { text: resultSpan.innerHTML, className: resultSpan.className };
+				}
+				if (testRes.data.country) {
+					try {
+						let cache = JSON.parse(localStorage.getItem('proxy_flag_cache_v2') || '{}');
+						cache[proxyStr] = testRes.data.country.toUpperCase();
+						localStorage.setItem('proxy_flag_cache_v2', JSON.stringify(cache));
+						if (typeof window.renderProxyFieldsUI === 'function') window.renderProxyFieldsUI();
+					} catch(e) {}
 				}
 			} else {
-				resultSpan = document.getElementById('proxy-ping-label-' + idx);
-				if (resultSpan) {
-					const errMsg = testRes.data ? (testRes.data.error || 'ناموفق') : testRes.error;
-					resultSpan.innerText = 'خطا: ' + errMsg;
-					resultSpan.className = 'text-[10px] font-bold text-red-500 block mt-0.5 break-words text-center';
-					window.proxyPingMap[proxyStr] = { text: resultSpan.innerText, className: resultSpan.className };
+				if (isAutoRotate) {
+					let swapSuccess = false;
+					let maxSwaps = 15; 
+					let currentBadProxy = proxyStr;
+					for (let attempt = 1; attempt <= maxSwaps; attempt++) {
+						if (isStale()) return;
+						resultSpan = document.getElementById('proxy-ping-label-' + idx);
+						if (resultSpan) {
+							resultSpan.innerText = 'خراب بود، تعویض (' + attempt + '/' + maxSwaps + ')...';
+							resultSpan.className = 'text-[10px] font-bold text-blue-500 block mt-0.5 text-center';
+						}
+						await window.swapProxyFieldUI(idx, false);
+						if (isStale()) return;
+						const newProxy = (window.proxyFieldsData[idx] || "").trim();
+						if (newProxy && newProxy !== currentBadProxy) {
+							resultSpan = document.getElementById('proxy-ping-label-' + idx);
+							if (resultSpan) {
+								resultSpan.innerText = 'تست پروکسی جدید (' + attempt + ')...';
+								resultSpan.className = 'text-[10px] font-bold text-amber-500 block mt-0.5 text-center';
+							}
+							let newTestRes = await checkProxy(newProxy);
+							if (isStale() || newTestRes.aborted) return;
+							resultSpan = document.getElementById('proxy-ping-label-' + idx);
+							if (newTestRes.ok && newTestRes.data.success) {
+								const flag = typeof getFlagEmoji === 'function' ? getFlagEmoji(newTestRes.data.country) : '🌐';
+								if (resultSpan) {
+									const displayPing = calcDisplayPing(newTestRes.data.ping);
+									resultSpan.innerHTML = flag + ' پینگ: ' + displayPing + 'ms';
+									resultSpan.className = 'text-[10px] font-bold text-green-600 block mt-0.5 text-center';
+									window.proxyPingMap[newProxy] = { text: resultSpan.innerHTML, className: resultSpan.className };
+								}
+								if (newTestRes.data.country) {
+									try {
+										let cache = JSON.parse(localStorage.getItem('proxy_flag_cache_v2') || '{}');
+										cache[newProxy] = newTestRes.data.country.toUpperCase();
+										localStorage.setItem('proxy_flag_cache_v2', JSON.stringify(cache));
+										if (typeof window.renderProxyFieldsUI === 'function') window.renderProxyFieldsUI();
+									} catch(e) {}
+								}
+								swapSuccess = true;
+								break; 
+							} else { currentBadProxy = newProxy; }
+						} else { break; }
+					}
+					if (isStale()) return;
+					if (!swapSuccess) {
+						resultSpan = document.getElementById('proxy-ping-label-' + idx);
+						if (resultSpan) {
+							resultSpan.innerText = 'چندین پروکسی جایگزین تست شد اما همه خراب بودند!';
+							resultSpan.className = 'text-[10px] font-bold text-red-500 block mt-0.5 text-center';
+							const finalProxy = (window.proxyFieldsData[idx] || "").trim();
+							window.proxyPingMap[finalProxy] = { text: resultSpan.innerText, className: resultSpan.className };
+						}
+					}
+				} else {
+					resultSpan = document.getElementById('proxy-ping-label-' + idx);
+					if (resultSpan) {
+						const errMsg = testRes.data ? (testRes.data.error || 'ناموفق') : testRes.error;
+						resultSpan.innerText = 'خطا: ' + errMsg;
+						resultSpan.className = 'text-[10px] font-bold text-red-500 block mt-0.5 break-words text-center';
+						window.proxyPingMap[proxyStr] = { text: resultSpan.innerText, className: resultSpan.className };
+					}
 				}
 			}
+		});
+		await Promise.all(testTasks);
+	} finally {
+		if (window.proxyTestAbortController === testAbortController) { window.proxyTestAbortController = null; }
+		if (btn && myTestSeq === window.proxyTestSessionId && myModalSeq === window.userModalSessionId) {
+			btn.disabled = false;
+			btn.innerText = 'تست پـروکـسـی';
 		}
-	});
-	await Promise.all(testTasks);
-	if (btn) { btn.disabled = false; btn.innerText = 'تست پـروکـسـی'; }
+	}
 }
 		async function exportUsersBackup() {
 			if (!window.allUsers || window.allUsers.length === 0) { alert('⚠️ کاربری برای پشتیبان‌گیری وجود ندارد!'); return; }
@@ -12952,14 +13145,16 @@ async function ensureDomainsCache() {
 	} catch(e) {}
 	if (staleData) { cachedDomainsData = staleData; }
 }
+window.ipSelectorSeq = 0;
 async function fetchIpsList() {
 	await Promise.all([ensureIpsCache(), ensureIpv6Cache(), ensureDomainsCache()]);
 	if (Object.keys(cachedIpsData).length === 0 && cachedDomainsData.length === 0 && cachedIpv6Data.length === 0) {
 		alert('خطا در دریافت لیست آی‌پی‌ها و دامنه‌ها.');
 		toggleIpSelectorModal(false);
-		return;
+		return false;
 	}
 	populateIpSelect();
+	return true;
 }
 function populateIpSelect() {
 	const select = document.getElementById('ip-operator-select');
@@ -12972,7 +13167,10 @@ function populateIpSelect() {
 		select.appendChild(option);
 	});
 }
-function toggleIpSelectorModal(show) { setModalState('ip-selector-modal', show); }
+function toggleIpSelectorModal(show) {
+	if (!show) window.ipSelectorSeq++;
+	setModalState('ip-selector-modal', show);
+}
 function toggleIpScannerModal(show) { setModalState('ip-scanner-modal', show); }
 function openIpScannerModal() { toggleIpScannerModal(true); }
 function copyScannerCode(text, btn) {
@@ -12990,10 +13188,12 @@ function copyScannerCode(text, btn) {
 	});
 }
 async function openIpSelectorModal() {
+	const reqSeq = ++window.ipSelectorSeq;
 	toggleIpSelectorModal(true);
 	document.getElementById('ip-loading-state').classList.remove('hidden');
 	document.getElementById('ip-selection-form').classList.add('hidden');
-	await fetchIpsList();
+	const ok = await fetchIpsList();
+	if (!ok || reqSeq !== window.ipSelectorSeq) return;
 	const rawOp = document.getElementById('hidden-ip-operator').value || 'all|ipv4';
 	const parts = rawOp.split('|');
 	const op = parts[0] || 'all';
@@ -13102,12 +13302,15 @@ if (selectedItems.length === 0) { alert('موردی در مخزن انتخاب �
 			}
 		}
 		window.hasShownLoopWarning = false;
+		window.isCheckingLoopWarning = false;
+		window.loopWarningIntervalId = null;
 		async function checkLoopWarning() {
-			if (window.hasShownLoopWarning) return;
-			await new Promise(r => setTimeout(r, 1500)); 
-			const testProxies = ["socks5://8.8.8.8:1080", "socks5://1.1.1.1:1080"];
-			const randomProxy = testProxies[Math.floor(Math.random() * testProxies.length)];
+			if (window.hasShownLoopWarning || window.isCheckingLoopWarning) return;
+			window.isCheckingLoopWarning = true;
 			try {
+				await new Promise(r => setTimeout(r, 1500)); 
+				const testProxies = ["socks5://8.8.8.8:1080", "socks5://1.1.1.1:1080"];
+				const randomProxy = testProxies[Math.floor(Math.random() * testProxies.length)];
 				const controller = new AbortController();
 				const timeoutId = setTimeout(() => controller.abort(), 4000);
 				const res = await fetch('/api/test-proxy', {
@@ -13123,16 +13326,19 @@ if (selectedItems.length === 0) { alert('موردی در مخزن انتخاب �
 					const showLoopModal = () => {
 						const modal = document.getElementById('loop-warning-modal');
 						const card = document.getElementById('loop-warning-card');
-						if(modal && card) {
+						if (modal && card && !modal.classList.contains('opacity-100')) {
 							modal.classList.replace('opacity-0', 'opacity-100');
 							modal.classList.replace('pointer-events-none', 'pointer-events-auto');
 							card.classList.replace('scale-95', 'scale-100');
 						}
 					};
 					showLoopModal();
-					setInterval(showLoopModal, 10000);
+					if (window.loopWarningIntervalId) clearInterval(window.loopWarningIntervalId);
+					window.loopWarningIntervalId = setInterval(showLoopModal, 10000);
 				}
 			} catch (e) {
+			} finally {
+				window.isCheckingLoopWarning = false;
 			}
 		}
 		document.addEventListener('DOMContentLoaded', () => {
@@ -13274,7 +13480,31 @@ if (selectedItems.length === 0) { alert('موردی در مخزن انتخاب �
 				}
 			});
 		});
-function toggleProxySelectorModal(show) { setModalState('proxy-selector-modal', show); }
+window.proxySelectorSessionId = 0;
+window.proxyScanAbortController = null;
+function resetProxySelectorUI() {
+	const loadingState = document.getElementById('proxy-loading-state');
+	const formState = document.getElementById('proxy-selection-form');
+	const fetchBtn = document.getElementById('proxy-fetch-btn');
+	if (loadingState) {
+		loadingState.classList.add('hidden');
+		loadingState.innerText = 'در حال اسکن...';
+	}
+	if (formState) formState.classList.remove('hidden');
+	if (fetchBtn) fetchBtn.disabled = false;
+}
+function abortProxySelectorScan() {
+	window.proxySelectorSessionId++;
+	if (window.proxyScanAbortController) {
+		window.proxyScanAbortController.abort();
+		window.proxyScanAbortController = null;
+	}
+	resetProxySelectorUI();
+}
+function toggleProxySelectorModal(show) {
+	if (!show) abortProxySelectorScan();
+	setModalState('proxy-selector-modal', show);
+}
 		async function loadVipCountries() {
 			const select = document.getElementById('vip-country-select');
 			const btn = document.getElementById('vip-fetch-btn');
@@ -13333,9 +13563,11 @@ function toggleProxySelectorModal(show) { setModalState('proxy-selector-modal', 
 		}
 
 		async function loadPublicAtlasCountries() {
+			const mySession = window.proxySelectorSessionId;
 			const select = document.getElementById('proxy-country-select');
 			const fetchBtn = document.getElementById('proxy-fetch-btn');
 			if (cachedAtlasCountries) {
+				if (mySession !== window.proxySelectorSessionId) return;
 				renderAtlasCountryOptions(cachedAtlasCountries);
 				if (fetchBtn) fetchBtn.disabled = false;
 				return;
@@ -13345,6 +13577,7 @@ function toggleProxySelectorModal(show) { setModalState('proxy-selector-modal', 
 				if (saved) {
 					const parsed = JSON.parse(saved);
 					if (parsed && parsed.countries && (Date.now() - parsed.timestamp < 21600000)) {
+						if (mySession !== window.proxySelectorSessionId) return;
 						cachedAtlasCountries = parsed.countries;
 						renderAtlasCountryOptions(cachedAtlasCountries);
 						if (fetchBtn) fetchBtn.disabled = false;
@@ -13370,7 +13603,7 @@ function toggleProxySelectorModal(show) { setModalState('proxy-selector-modal', 
 				}
 			} catch(e) {}
 
-			if (!loadedData) {
+			if (!loadedData && mySession === window.proxySelectorSessionId) {
 				const manifestUrls = [
 					'https://cdn.jsdelivr.net/gh/aradava/proxy-atlas@main/results/manifest.json',
 					'https://raw.githubusercontent.com/aradava/proxy-atlas/refs/heads/main/results/manifest.json'
@@ -13403,11 +13636,13 @@ function toggleProxySelectorModal(show) { setModalState('proxy-selector-modal', 
 				cachedAtlasCountries = ATLAS_FALLBACK_COUNTRIES;
 			}
 
+			if (mySession !== window.proxySelectorSessionId) return;
 			renderAtlasCountryOptions(cachedAtlasCountries);
 			if (fetchBtn) fetchBtn.disabled = false;
 		}
 
 		async function openProxySelectorModal() {
+			abortProxySelectorScan();
 			toggleProxySelectorModal(true);
 			loadPublicAtlasCountries();
 			loadVipCountries();
@@ -13417,6 +13652,11 @@ async function fetchAndLoadProxy() {
 	const select = document.getElementById('proxy-country-select');
 	const country = select ? select.value : '';
 	if (!country) return;
+	if (window.proxyScanAbortController) { window.proxyScanAbortController.abort(); }
+	const scanController = new AbortController();
+	window.proxyScanAbortController = scanController;
+	const scanSession = window.proxySelectorSessionId;
+	const isCancelled = () => scanSession !== window.proxySelectorSessionId || scanController.signal.aborted;
 	const loadingState = document.getElementById('proxy-loading-state');
 	const formState = document.getElementById('proxy-selection-form');
 	const fetchBtn = document.getElementById('proxy-fetch-btn');
@@ -13429,33 +13669,33 @@ async function fetchAndLoadProxy() {
 	try {
 		const cUpper = country.toUpperCase();
 		let rawText = '';
-		try {
-			const controller = new AbortController();
-			const timeoutId = setTimeout(function() { controller.abort(); }, 8000);
-			const workerRes = await fetch('/api/public-proxies?country=' + encodeURIComponent(cUpper), { signal: controller.signal });
-			clearTimeout(timeoutId);
-			if (workerRes.ok) {
-				rawText = await workerRes.text();
-			}
-		} catch(e) {}
+		{
+			const reqScope = createScopedAbort(scanController, 8000);
+			try {
+				const workerRes = await fetch('/api/public-proxies?country=' + encodeURIComponent(cUpper), { signal: reqScope.signal });
+				if (workerRes.ok) {
+					rawText = await workerRes.text();
+				}
+			} catch(e) {} finally { reqScope.cleanup(); }
+		}
+		if (isCancelled()) return;
 
 		if (!rawText || rawText.length < 5) {
 			const fallbackUrls = [
 				'https://cdn.jsdelivr.net/gh/aradava/proxy-atlas@main/results/countries/' + cUpper + '/all.txt',
 				'https://raw.githubusercontent.com/aradava/proxy-atlas/refs/heads/main/results/countries/' + cUpper + '/all.txt'
 			];
+			const fbScope = createScopedAbort(scanController, 7000);
 			try {
-				const controller = new AbortController();
-				const timeoutId = setTimeout(function() { controller.abort(); }, 7000);
 				rawText = await Promise.any(fallbackUrls.map(function(u) {
-					return fetch(u, { signal: controller.signal }).then(function(r) {
+					return fetch(u, { signal: fbScope.signal }).then(function(r) {
 						if (!r.ok) throw new Error();
 						return r.text();
 					});
 				}));
-				clearTimeout(timeoutId);
-			} catch(e) {}
+			} catch(e) {} finally { fbScope.cleanup(); }
 		}
+		if (isCancelled()) return;
 
 		if (!rawText || rawText.trim().length < 5) {
 			alert('لیست پـروکـسـی برای کشور ' + cUpper + ' دریافت نشد یا این کشور پـروکـسـی ندارد.');
@@ -13503,21 +13743,20 @@ async function fetchAndLoadProxy() {
 		let bestPing = 999;
 		const BATCH_SIZE = 4;
 		for (let i = 0; i < testCandidates.length; i += BATCH_SIZE) {
+			if (isCancelled()) return;
 			const batch = testCandidates.slice(i, i + BATCH_SIZE);
 			if (loadingState) {
 				loadingState.innerText = 'تعداد ' + lines.length + ' پـروکـسـی یافت شد. درحال اسکن...\\nبررسی گروه ' + (Math.floor(i / BATCH_SIZE) + 1) + ' از ' + Math.ceil(testCandidates.length / BATCH_SIZE);
 			}
 			const testResults = await Promise.allSettled(batch.map(async function(candidate) {
-				const controller = new AbortController();
-				const timeoutId = setTimeout(function() { controller.abort(); }, 5000);
+				const candScope = createScopedAbort(scanController, 5000);
 				try {
 					const testRes = await fetch('/api/test-proxy', {
 						method: 'POST',
 						headers: { 'Content-Type': 'application/json' },
 						body: JSON.stringify({ proxy: candidate }),
-						signal: controller.signal
+						signal: candScope.signal
 					});
-					clearTimeout(timeoutId);
 					if (testRes.ok) {
 						const testData = await testRes.json();
 						if (testData.success) {
@@ -13525,10 +13764,12 @@ async function fetchAndLoadProxy() {
 						}
 					}
 				} catch (err) {
-					clearTimeout(timeoutId);
+				} finally {
+					candScope.cleanup();
 				}
 				throw new Error('fail');
 			}));
+			if (isCancelled()) return;
 			const successfulProxies = testResults
 				.filter(function(r) { return r.status === 'fulfilled'; })
 				.map(function(r) { return r.value; })
@@ -13539,6 +13780,7 @@ async function fetchAndLoadProxy() {
 				break;
 			}
 		}
+		if (isCancelled()) return;
 		if (bestProxy) {
 			window.proxyFieldsData[window.activeProxyIndex || 0] = bestProxy;
 			if (typeof window.renderProxyFieldsUI === 'function') window.renderProxyFieldsUI();
@@ -13551,12 +13793,16 @@ async function fetchAndLoadProxy() {
 			alert('هیچ پـروکـسـی سالمی که بتواند با تمام تارگت‌ها ارتباط برقرار کند یافت نشد.');
 		}
 	} catch (e) {
+		if (isCancelled() || (e && e.name === 'AbortError')) return;
 		console.error('Proxy fetch/scan error:', e);
 		alert('خطا در دریافت لیست پـروکـسـی‌ها از سرور: ' + (e && e.message ? e.message : 'نامشخص'));
 	} finally {
-		if (loadingState) loadingState.classList.add('hidden');
-		if (formState) formState.classList.remove('hidden');
-		if (fetchBtn) fetchBtn.disabled = false;
+		if (window.proxyScanAbortController === scanController) { window.proxyScanAbortController = null; }
+		if (scanSession === window.proxySelectorSessionId) {
+			if (loadingState) loadingState.classList.add('hidden');
+			if (formState) formState.classList.remove('hidden');
+			if (fetchBtn) fetchBtn.disabled = false;
+		}
 	}
 }
 
