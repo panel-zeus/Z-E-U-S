@@ -627,7 +627,7 @@ function obfuscateSourceForUpdate(sourceCode) {
 	const fixRegex = new RegExp("(?:const|let|var)\\s+UPDATE_" + "FIX\\s*=\\s*(['\"])([^'\"]+)\\1");
 	const verMatch = code.match(verRegex);
 	const fixMatch = code.match(fixRegex);
-	const versionStr = verMatch ? verMatch[2] : "2.4.2";
+	const versionStr = verMatch ? verMatch[2] : "2.4.3";
 	const updateFixStr = fixMatch ? fixMatch[2] : "constsCURRENT_VERSION='d.d.d'";
 	const xorKey1 = 198;
 	const xorKey2 = 124;
@@ -1937,6 +1937,9 @@ const Router = {
 			if (proxyList.length === 0) proxyList = [null];
 			function getFlag(code) {
 				if (!code || code === "UN") return "🌐";
+				if (String(code).trim().toUpperCase() === "SMART") {
+					return '<svg class="w-[1em] h-[1em] text-purple-500 inline-block" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>';
+				}
 				const cc = String(code).toUpperCase().replace(/[^A-Z]/g, '');
 				if (cc.length !== 2) return "🌐";
 				try { return String.fromCodePoint(...cc.split('').map(c => 127397 + c.charCodeAt(0))); } catch(e) { return "🌐"; }
@@ -3384,7 +3387,7 @@ const SubscriptionService = {
 				}
 			}
 			let flagEmoji = "🌐";
-			if (countryCode && countryCode !== "UN") {
+			if (countryCode && countryCode !== "UN" && /^[A-Z]{2}$/i.test(countryCode)) {
 				const codePoints = countryCode.toUpperCase().split("").map((char) => 127397 + char.charCodeAt(0));
 				try { flagEmoji = String.fromCodePoint(...codePoints); } catch (e) { }
 			}
@@ -6321,6 +6324,9 @@ const COMMON_TOAST_JS = `
 const COMMON_SHARED_FUNCS_JS = `
 		function getFlagEmoji(countryCode) {
 			if (!countryCode) return '<span class="zeus-flag-globe">🌐</span>';
+			if (String(countryCode).trim().toUpperCase() === 'SMART') {
+				return '<svg class="w-[1em] h-[1em] text-purple-500 inline-block" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>';
+			}
 			const cc = String(countryCode).toLowerCase().replace(/[^a-z]/g, '');
 			if (cc.length !== 2) return '<span class="zeus-flag-globe">🌐</span>';
 			return '<span class="fi fi-' + cc + ' zeus-flag" title="' + cc.toUpperCase() + '"></span>';
@@ -6492,7 +6498,7 @@ const HTML_TEMPLATES = {
 	<div class="w-full max-w-md bg-white dark:bg-amoled-card border border-gray-200 dark:border-amoled-border rounded-md shadow-xl p-8 text-center flex flex-col items-center gap-4 relative z-10">
 		<div class="absolute top-3.5 right-3.5 flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800/50 text-[11px] font-mono font-bold text-blue-600 dark:text-blue-400 select-none shadow-sm" dir="ltr">
 			<span class="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse"></span>
-			<span>v2.4.2</span>
+			<span>v2.4.3</span>
 		</div>
 		<div class="p-4 bg-blue-50 dark:bg-blue-900/20 text-blue-500 rounded-full mb-2">
 			<svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
@@ -6558,7 +6564,7 @@ const HTML_TEMPLATES = {
 	<div class="w-full max-w-md bg-white dark:bg-amoled-card border border-gray-200 dark:border-amoled-border rounded-md shadow-xl p-6 relative z-10">
 		<div class="absolute top-3.5 right-3.5 flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800/50 text-[11px] font-mono font-bold text-blue-600 dark:text-blue-400 select-none shadow-sm" dir="ltr">
 			<span class="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse"></span>
-			<span>v2.4.2</span>
+			<span>v2.4.3</span>
 		</div>
 		<h2 class="text-xl font-bold mb-2 text-center text-blue-600 dark:text-blue-400">تنظیم رمز عبور جدید</h2>
 		<p class="text-sm text-gray-500 dark:text-gray-400 text-center mb-6">این اولین ورود شما به پـنـل مدیریت است. لطفاً رمز عبور خود را تعیین کنید.</p>
@@ -6652,7 +6658,7 @@ const HTML_TEMPLATES = {
 	<div class="w-full max-w-md bg-white dark:bg-amoled-card border border-gray-200 dark:border-amoled-border rounded-md shadow-xl p-6 relative z-10">
 		<div class="absolute top-3.5 right-3.5 flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800/50 text-[11px] font-mono font-bold text-blue-600 dark:text-blue-400 select-none shadow-sm" dir="ltr">
 			<span class="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse"></span>
-			<span>v2.4.2</span>
+			<span>v2.4.3</span>
 		</div>
 		<div id="login-section">
 			<h2 class="text-xl font-bold mb-6 text-center text-blue-600 dark:text-blue-400">ورود به پـنـل مدیریت</h2>
@@ -9508,8 +9514,10 @@ ${COMMON_TOAST_HTML}
 					const pRes = await fetch('/api/placement-status');
 					if (pRes.ok) {
 						const pData = await pRes.json();
-						let currentRegion = pData.placement || "smart";
-						if (currentRegion !== "smart" && currentRegion !== "off" && currentRegion !== "none" && !currentRegion.startsWith("targeted")) {
+						let currentRegion = String(pData.placement || "smart").trim().toLowerCase();
+						if (currentRegion === "smart") {
+							panelIso = "SMART";
+						} else if (currentRegion !== "off" && currentRegion !== "none" && !currentRegion.startsWith("targeted")) {
 							if (!currentRegion.includes(':')) {
 								for (const prov in PLACEMENT_DATA.providers) {
 									const found = PLACEMENT_DATA.providers[prov].regions.find(r => r.id.toLowerCase() === currentRegion);
@@ -10299,7 +10307,9 @@ const PLACEMENT_DATA = {
 			btn.disabled = true;
 			try {
 				let isoCode = "";
-				if (regionValue !== "smart" && regionValue !== "off" && regionValue !== "none" && !regionValue.startsWith("targeted")) {
+				if (regionValue === "smart") {
+					isoCode = "SMART";
+				} else if (regionValue !== "off" && regionValue !== "none" && !regionValue.startsWith("targeted")) {
 					let foundCountry = null;
 					for (const prov in PLACEMENT_DATA.providers) {
 						const found = PLACEMENT_DATA.providers[prov].regions.find(r => (prov.toLowerCase() + ':' + r.id.toLowerCase()) === regionValue.toLowerCase());
@@ -11004,9 +11014,14 @@ async function executeRocketCreate() {
 					if (user.enable_direct !== 0 && user.user_proxy_iata) {
 						const iata = user.user_proxy_iata.toUpperCase();
 						const flag = typeof getFlagEmoji === 'function' ? getFlagEmoji(iata) : '<span class="zeus-flag-globe">🌐</span>';
-						allFlagsHtml.push('<span title="مستقیم (پنل): ' + iata + '" class="leading-none flex items-center justify-center">' + flag + '</span>');
+						const directTitle = iata === 'SMART' ? 'مستقیم (هوشمند/خودکار)' : ('مستقیم (پنل): ' + iata);
+						allFlagsHtml.push('<span title="' + directTitle + '" class="leading-none flex items-center justify-center">' + flag + '</span>');
 					} else if (user.enable_direct !== 0) {
-						allFlagsHtml.push('<span title="مستقیم (هوشمند/دیفالت)" class="leading-none flex items-center justify-center"><span class="zeus-flag-globe">🌐</span></span>');
+						const isPanelSmart = localStorage.getItem('zeus_cached_placement') === 'smart';
+						const directIcon = isPanelSmart && typeof getFlagEmoji === 'function'
+							? getFlagEmoji('SMART')
+							: '<span class="zeus-flag-globe">🌐</span>';
+						allFlagsHtml.push('<span title="مستقیم (هوشمند/دیفالت)" class="leading-none flex items-center justify-center">' + directIcon + '</span>');
 					}
 					if (proxyList.length > 0 && proxyList[0]) {
 						proxyList.forEach(item => {
@@ -11577,8 +11592,10 @@ async function executeRocketCreate() {
 					const pRes = await fetch('/api/placement-status');
 					if (pRes.ok) {
 						const pData = await pRes.json();
-						let currentRegion = pData.placement || "smart";
-						if (currentRegion !== "smart" && currentRegion !== "off" && currentRegion !== "none" && !currentRegion.startsWith("targeted")) {
+						let currentRegion = String(pData.placement || "smart").trim().toLowerCase();
+						if (currentRegion === "smart") {
+							panelIso = "SMART";
+						} else if (currentRegion !== "off" && currentRegion !== "none" && !currentRegion.startsWith("targeted")) {
 							if (!currentRegion.includes(':')) {
 								for (const prov in PLACEMENT_DATA.providers) {
 									const found = PLACEMENT_DATA.providers[prov].regions.find(r => r.id.toLowerCase() === currentRegion);
@@ -12809,7 +12826,7 @@ async function testUserSocksProxy() {
 				window.location.reload();
 			}
 		}
-const CURRENT_VERSION = '2.4.2';
+const CURRENT_VERSION = '2.4.3';
 const UPDATE_FIX = "constsCURRENT_VERSION='d.d.d'";
 		window.autoUpdateStatusCache = false;
 		async function checkAutoUpdateSetup() {
@@ -12951,7 +12968,9 @@ const UPDATE_FIX = "constsCURRENT_VERSION='d.d.d'";
 				btn.disabled = true;
 				btn.innerText = 'در حال اعمال...';
 				let isoCode = "";
-				if (regionValue !== "smart" && regionValue !== "off" && regionValue !== "none" && !regionValue.startsWith("targeted")) {
+				if (regionValue === "smart") {
+					isoCode = "SMART";
+				} else if (regionValue !== "off" && regionValue !== "none" && !regionValue.startsWith("targeted")) {
 					let foundCountry = null;
 					for (const prov in PLACEMENT_DATA.providers) {
 						const found = PLACEMENT_DATA.providers[prov].regions.find(r => (prov.toLowerCase() + ':' + r.id.toLowerCase()) === regionValue.toLowerCase());
@@ -14404,7 +14423,10 @@ ${COMMON_TOAST_HTML}
 const flagContainer = document.getElementById('display-flag');
 	if (u.user_proxy_iata) {
 		const flag = getFlagEmoji(u.user_proxy_iata);
-		flagContainer.innerHTML = flag + " " + u.user_proxy_iata.toUpperCase();
+		const iataUp = u.user_proxy_iata.toUpperCase();
+		flagContainer.innerHTML = iataUp === 'SMART'
+			? '<span class="inline-flex items-center justify-center gap-1.5">' + flag + '<span class="text-base">خودکار</span></span>'
+			: (flag + " " + iataUp);
 		flagContainer.style.display = 'block';
 } else if (u.user_socks5 || u.user_proxy_ip) {
 	flagContainer.style.display = 'block';
