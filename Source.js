@@ -3496,7 +3496,11 @@ const SubscriptionService = {
 	},
 	async generateYaml(user, host) {
 		let ips = await resolveUserIps(user, host);
-		const ports = String(user.port || "443").split(",").map((p) => p.trim()).filter((p) => p.length > 0);
+		if (!Array.isArray(ips)) ips = [host];
+		ips = ips.map((x) => String(x || "").trim()).filter((x) => x.length > 0);
+		if (ips.length === 0) ips = [host];
+		let ports = String(user.port || "443").split(",").map((p) => p.trim()).filter((p) => /^\d+$/.test(p));
+		if (ports.length === 0) ports = ["443"];
 		const rawPath = "/stream/PANEL_ZEUS/" + ((user.uuid || "").split("-")[4] || "default");
 		let proxyList = [];
 		try {
@@ -3591,7 +3595,8 @@ const SubscriptionService = {
 			const bMatch = ip.match(/^\[(.*?)\]/);
 			if (bMatch) ip = bMatch[1];
 			else if (ip.split(":").length === 2) ip = ip.split(":")[0];
-			let yamlIp = ip.includes(":") ? `"${ip}"` : ip;
+			if (!ip) return;
+			let yamlIp = ip.includes(":") ? JSON.stringify(ip) : ip;
 			ports.forEach((portStr) => {
 				resolvedProxies.forEach((proxy) => {
 					const isTlsPort = TLS_PORTS.has(portStr);
@@ -3600,7 +3605,7 @@ const SubscriptionService = {
 						nameCounter[baseName] = (nameCounter[baseName] || 0) + 1;
 						let uniqueName = baseName + " " + nameCounter[baseName];
 						proxyNames.push(uniqueName);
-						let pObj = "  - name: \"" + uniqueName + "\"\n" +
+						let pObj = "  - name: " + JSON.stringify(uniqueName) + "\n" +
 							"    type: vless\n" +
 							"    server: " + yamlIp + "\n" +
 							"    port: " + portStr + "\n" +
@@ -3608,11 +3613,11 @@ const SubscriptionService = {
 							"    udp: true\n" +
 							"    network: ws\n" +
 							"    ws-opts:\n" +
-							"      path: " + proxy.currentDynPath + "\n" +
+							"      path: " + JSON.stringify(proxy.currentDynPath) + "\n" +
 							"      headers:\n" +
-							"        Host: " + host + "\n";
+							"        Host: " + JSON.stringify(host) + "\n";
 						if (isTlsPort) {
-							pObj += "    tls: true\n    servername: " + host + "\n    skip-cert-verify: false\n";
+							pObj += "    tls: true\n    servername: " + JSON.stringify(host) + "\n    skip-cert-verify: false\n";
 						}
 						yamlProxies.push(pObj);
 					}
@@ -3620,19 +3625,19 @@ const SubscriptionService = {
 						nameCounter[baseName] = (nameCounter[baseName] || 0) + 1;
 						let uniqueName = baseName + " " + nameCounter[baseName];
 						proxyNames.push(uniqueName);
-						let pObj = "  - name: \"" + uniqueName + "\"\n" +
+						let pObj = "  - name: " + JSON.stringify(uniqueName) + "\n" +
 							"    type: trojan\n" +
 							"    server: " + yamlIp + "\n" +
 							"    port: " + portStr + "\n" +
-							"    password: " + user.uuid + "\n" +
+							"    password: " + JSON.stringify(user.uuid || "") + "\n" +
 							"    udp: true\n" +
 							"    network: ws\n" +
 							"    ws-opts:\n" +
-							"      path: " + proxy.currentDynPath + "\n" +
+							"      path: " + JSON.stringify(proxy.currentDynPath) + "\n" +
 							"      headers:\n" +
-							"        Host: " + host + "\n";
+							"        Host: " + JSON.stringify(host) + "\n";
 						if (isTlsPort) {
-							pObj += "    skip-cert-verify: false\n    sni: " + host + "\n";
+							pObj += "    skip-cert-verify: false\n    sni: " + JSON.stringify(host) + "\n";
 						}
 						yamlProxies.push(pObj);
 					}
@@ -3640,18 +3645,18 @@ const SubscriptionService = {
 						nameCounter[baseName] = (nameCounter[baseName] || 0) + 1;
 						let uniqueName = baseName + " " + nameCounter[baseName];
 						proxyNames.push(uniqueName);
-						let pObj = "  - name: \"" + uniqueName + "\"\n" +
+						let pObj = "  - name: " + JSON.stringify(uniqueName) + "\n" +
 							"    type: ss\n" +
 							"    server: " + yamlIp + "\n" +
 							"    port: " + portStr + "\n" +
 							"    cipher: aes-256-gcm\n" +
-							"    password: \"" + user.uuid + "\"\n" +
+							"    password: " + JSON.stringify(user.uuid || "") + "\n" +
 							"    plugin: v2ray-plugin\n" +
 							"    plugin-opts:\n" +
 							"      mode: websocket\n" +
 							"      mux: false\n" +
-							"      host: \"" + host + "\"\n" +
-							"      path: \"" + proxy.currentDynPath + "\"\n";
+							"      host: " + JSON.stringify(host) + "\n" +
+							"      path: " + JSON.stringify(proxy.currentDynPath) + "\n";
 						if (isTlsPort) {
 							pObj += "      tls: true\n      skip-cert-verify: false\n";
 						}
@@ -3693,26 +3698,29 @@ const SubscriptionService = {
 			"      - \"+.twitter.com\"\n" +
 			"      - \"+.instagram.com\"\n" +
 			"      - \"+.telegram.org\"\n\n";
+		const quotedProxyNames = proxyNames.map((n) => "      - " + JSON.stringify(n) + "\n").join("");
 		yamlStr += "proxies:\n" + yamlProxies.join("") + "\n";
 		yamlStr += "proxy-groups:\n" +
-			"  - name: \"🚀 انتخاب مسیر\"\n" +
+			"  - name: PROXY\n" +
 			"    type: select\n" +
 			"    proxies:\n" +
-			"      - \"⚡ خودکار (بهترین پینگ)\"\n" +
+			(proxyNames.length > 0 ? "      - Auto\n" : "") +
 			"      - DIRECT\n" +
-			proxyNames.map((n) => "      - \"" + n + "\"\n").join("") +
-			"  - name: \"⚡ خودکار (بهترین پینگ)\"\n" +
-			"    type: url-test\n" +
-			"    url: http://www.gstatic.com/generate_204\n" +
-			"    interval: 300\n" +
-			"    tolerance: 50\n" +
-			"    proxies:\n" +
-			proxyNames.map((n) => "      - \"" + n + "\"\n").join("") + "\n";
+			quotedProxyNames +
+			(proxyNames.length > 0 ? (
+				"  - name: Auto\n" +
+				"    type: url-test\n" +
+				"    url: http://www.gstatic.com/generate_204\n" +
+				"    interval: 300\n" +
+				"    tolerance: 50\n" +
+				"    proxies:\n" +
+				quotedProxyNames + "\n"
+			) : "\n");
 		yamlStr += "\nrules:\n" +
 			"  - GEOIP,LAN,DIRECT\n" +
 			"  - GEOIP,IR,DIRECT\n" +
 			"  - DOMAIN-SUFFIX,ir,DIRECT\n" +
-			"  - MATCH,🚀 انتخاب مسیر\n\n" +
+			"  - MATCH,PROXY\n\n" +
 			"mixed-port: 10809\n" +
 			"allow-lan: false\n" +
 			"bind-address: 127.0.0.1\n" +
